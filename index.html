@@ -379,6 +379,7 @@
       <div style="width:34px;height:34px;background:linear-gradient(135deg,var(--accent),#059669);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">🌾</div>
       <div><div style="font-size:14px;font-weight:700;">Crops Farming</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Cashflow Manager</div></div>
       <div class="link-pill" style="margin-left:10px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:10px;font-weight:700;color:var(--accent);">🔗 ${linked}/${db.expenses.length}</div>
+      <button onclick="doLogout()" style="margin-left:8px;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:600;color:var(--muted);cursor:pointer;" title="Sign Out">🚪</button>
     </div>
     <div class="nav-tabs" style="display:flex;gap:3px;">${ts.map(t=>`<button onclick="go('${t.id}')" style="background:${tab===t.id?'var(--accent)':'transparent'};color:${tab===t.id?'#fff':'var(--muted)'};border:none;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;flex-direction:row;"><span>${t.i}</span><span class="nav-label">${t.l}</span></button>`).join('')}</div>
   </nav>
@@ -1474,17 +1475,61 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
 }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // INIT
+    // AUTH & LOGIN
     // ═══════════════════════════════════════════════════════════════════════
-    (async function init(){
+    let currentUser=null;
+
+    function showLogin(error=''){
+      document.getElementById('app').innerHTML=`
+        <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:100%;max-width:380px;">
+            <div style="text-align:center;margin-bottom:24px;">
+              <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#059669);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 12px;">🌾</div>
+              <div style="font-size:18px;font-weight:800;">Crops Farming</div>
+              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px;">Cashflow Manager</div>
+            </div>
+            ${error?`<div style="background:#7f1d1d30;border:1px solid var(--red);border-radius:8px;padding:10px;margin-bottom:16px;font-size:11px;color:var(--red);text-align:center;">${error}</div>`:''}
+            <div style="margin-bottom:14px;">
+              <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:5px;">Email</div>
+              <input id="login-email" type="email" value="ccfarmzambia@gmail.com" style="${inputS}" placeholder="your@email.com"/>
+            </div>
+            <div style="margin-bottom:20px;">
+              <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:5px;">Password</div>
+              <input id="login-pass" type="password" style="${inputS}" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+            </div>
+            <button onclick="doLogin()" style="width:100%;padding:13px;background:linear-gradient(135deg,var(--accent),#059669);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">🔐 Sign In</button>
+            <div style="text-align:center;margin-top:14px;font-size:10px;color:var(--muted);">Secured with Supabase Authentication</div>
+          </div>
+        </div>`;
+      document.getElementById('modal-root').innerHTML='';
+    }
+
+    async function doLogin(){
+      const btn=event.target;btnLoad(btn);
+      const email=document.getElementById('login-email').value.trim();
+      const pass=document.getElementById('login-pass').value;
+      if(!email||!pass){btnReset(btn);showLogin('Please enter email and password');return}
+      const{data,error}=await supa.auth.signInWithPassword({email,password:pass});
+      if(error){btnReset(btn);showLogin(error.message);return}
+      currentUser=data.user;
+      await startApp();
+    }
+
+    async function doLogout(){
+      const ok=await confirmModal('Sign Out','Are you sure you want to sign out?','👋','Sign Out','confirm-btn-danger');
+      if(!ok)return;
+      await supa.auth.signOut();
+      currentUser=null;
+      showLogin();
+    }
+
+    async function startApp(){
       document.getElementById('app').innerHTML=`
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;gap:20px;">
-          <div style="position:relative;width:60px;height:60px;">
-            <div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#059669);display:flex;align-items:center;justify-content:center;font-size:28px;animation:pulse 1.5s ease-in-out infinite;">🌾</div>
-          </div>
+          <div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#059669);display:flex;align-items:center;justify-content:center;font-size:28px;animation:pulse 1.5s ease-in-out infinite;">🌾</div>
           <div style="text-align:center;">
-            <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;">Crops Farming Cashflow</div>
-            <div style="font-size:11px;color:var(--muted);letter-spacing:0.5px;">Syncing with cloud database...</div>
+            <div style="font-size:16px;font-weight:800;color:var(--text);">Crops Farming Cashflow</div>
+            <div style="font-size:11px;color:var(--muted);">Syncing with cloud database...</div>
           </div>
           <div style="width:180px;height:3px;background:var(--surface2);border-radius:4px;overflow:hidden;">
             <div style="width:40%;height:100%;background:linear-gradient(90deg,var(--accent),#3b82f6);border-radius:4px;animation:loadBar 1.2s ease-in-out infinite;"></div>
@@ -1496,8 +1541,22 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
         </style>`;
       await migrateToCloud();
       await loadFromCloud();
-      db = getDB();
+      db=getDB();
       render();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════════════════
+    (async function init(){
+      // Check if already logged in (session persists)
+      const{data:{session}}=await supa.auth.getSession();
+      if(session&&session.user){
+        currentUser=session.user;
+        await startApp();
+      } else {
+        showLogin();
+      }
     })();
   </script>
 </body>
