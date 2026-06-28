@@ -214,6 +214,23 @@
       color: var(--accent)
     }
 
+    /* ═══ BUTTON LOADING STATE ═══ */
+    .btn-loading{pointer-events:none;opacity:0.7;position:relative}
+    .btn-loading::after{content:'';position:absolute;width:16px;height:16px;border:2px solid transparent;border-top-color:#fff;border-radius:50%;animation:btnSpin 0.6s linear infinite;right:14px;top:50%;margin-top:-8px}
+    @keyframes btnSpin{to{transform:rotate(360deg)}}
+
+    /* ═══ CUSTOM CONFIRM MODAL ═══ */
+    .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:300;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.15s}
+    .confirm-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:90%;max-width:380px;text-align:center;animation:slideIn 0.25s}
+    .confirm-box .confirm-icon{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px}
+    .confirm-box .confirm-title{font-size:15px;font-weight:800;margin-bottom:6px}
+    .confirm-box .confirm-msg{font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.5}
+    .confirm-box .confirm-btns{display:flex;gap:10px;justify-content:center}
+    .confirm-box .confirm-btns button{padding:10px 24px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+    .confirm-btn-cancel{background:var(--surface2);color:var(--muted);border:1px solid var(--border)!important}
+    .confirm-btn-danger{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff}
+    .confirm-btn-ok{background:linear-gradient(135deg,var(--accent),#059669);color:#fff}
+
     /* ═══ MOBILE RESPONSIVE ═══ */
     @media(max-width:768px){
       .app-nav{padding:0 12px!important}
@@ -809,6 +826,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
     // CRUD OPERATIONS
     // ═══════════════════════════════════════════════════════════════════════
     async function saveCFIn() {
+      const btn=event.target;btnLoad(btn);
       const rec = {
         sn: dbCache.cashflow.length + 1, type: 'in',
         partner: document.getElementById('cf-partner').value,
@@ -818,14 +836,15 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
         notes: document.getElementById('cf-notes-in').value
       };
       await addCashflow(rec);
-      await loadFromCloud(); toast('✓ Funding record saved'); tab = 'cashflow'; render();
+      await loadFromCloud(); btnReset(btn); toast('✓ Funding record saved'); tab = 'cashflow'; render();
     }
 
     async function saveCFOut() {
+      const btn=event.target;btnLoad(btn);
       const db = getDB();
       const a = analytics(db);
       const amountAED = parseFloat(document.getElementById('cf-amount-out').value) || 0;
-      if (amountAED > a.balance) { alert(`Transaction Blocked: This expense (AED ${fmt(amountAED)}) exceeds your available balance of AED ${fmt(a.balance)}.`); return; }
+      if (amountAED > a.balance) { btnReset(btn); confirmModal('Transaction Blocked',`This expense (AED ${fmt(amountAED)}) exceeds your available balance of AED ${fmt(a.balance)}.`,'🚫','OK','confirm-btn-ok'); return; }
       const rate = parseFloat(document.getElementById('cf-rate').value) || 0;
       let zmw = parseFloat(document.getElementById('cf-zmw').value) || 0;
       if (rate > 0 && zmw === 0 && amountAED > 0) zmw = parseFloat((amountAED * rate).toFixed(2));
@@ -838,10 +857,11 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
         const category=catSel==='__custom'?document.getElementById('cf-cat-custom').value:catSel;
         await addExpense({date:eDate||new Date().toISOString().slice(0,10),amount:zmw,paidTo:paidTo||'Unspecified',purpose:notes,linkedCfId:cfId,linkedCfIds:null,category:category||''});
       }
-      await loadFromCloud(); toast('✓ Expense record saved & linked'); tab = 'cashflow'; render();
+      await loadFromCloud(); btnReset(btn); toast('✓ Expense record saved & linked'); tab = 'cashflow'; render();
     }
 
     async function saveExp() {
+      const btn=event.target;btnLoad(btn);
       const linkVal = document.getElementById('exp-link').value;
       const link2El = document.getElementById('exp-link2');
       const link2Val = link2El ? link2El.value : '';
@@ -854,11 +874,12 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       const catSel=document.getElementById('exp-cat').value;
       const category=catSel==='__custom'?document.getElementById('exp-cat-custom').value:catSel;
       await addExpense({date:document.getElementById('exp-date').value,amount,paidTo:document.getElementById('exp-to').value,purpose:document.getElementById('exp-purpose').value,category:category||'',linkedCfId,linkedCfIds:linkedCfIds.length?linkedCfIds:null});
-      await loadFromCloud(); toast('✓ Expense saved'+(linkedCfIds.length?' & linked':'')); tab='expenses'; render();
+      await loadFromCloud(); btnReset(btn); toast('✓ Expense saved'+(linkedCfIds.length?' & linked':'')); tab='expenses'; render();
     }
 
     async function delRec(table, id) {
-      if (!confirm('Delete this record?')) return;
+      const ok = await confirmModal('Delete Record','Are you sure you want to delete this record? This action cannot be undone.','🗑️','Delete','confirm-btn-danger');
+      if (!ok) return;
       await deleteRecord(table, id);
       await loadFromCloud();
       toast('Deleted');
@@ -1004,7 +1025,8 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
     }
 
     async function updateCF(id) {
-      const db = getDB(); const r = db.cashflow.find(x => x.id === id); if (!r) return;
+      const btn=event.target;btnLoad(btn);
+      const db = getDB(); const r = db.cashflow.find(x => x.id === id); if (!r) {btnReset(btn);return;}
 
       const newType = document.getElementById('e-type').value;
       const newAmount = parseFloat(document.getElementById('e-amount').value) || 0;
@@ -1028,11 +1050,12 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       r.exchangeDate = document.getElementById('e-edate').value; r.exchRate = parseFloat(document.getElementById('e-rate').value) || 0;
       r.zmwEquiv = parseFloat(document.getElementById('e-zmw').value) || 0; r.notes = document.getElementById('e-notes').value;
       if (r.exchRate > 0 && r.zmwEquiv === 0 && r.amountAED > 0) r.zmwEquiv = parseFloat((r.amountAED * r.exchRate).toFixed(2));
-      await updateCashflowDB(id, r); await loadFromCloud(); toast('✓ Updated'); render()
+      await updateCashflowDB(id, r); await loadFromCloud(); btnReset(btn); toast('✓ Updated'); render()
     }
 
     async function updateExp(id) {
-      const db = getDB(); const r = db.expenses.find(x => x.id === id); if (!r) return;
+      const btn=event.target;btnLoad(btn);
+      const db = getDB(); const r = db.expenses.find(x => x.id === id); if (!r) {btnReset(btn);return;}
       r.date = document.getElementById('ee-date').value;
       r.amount = parseFloat(document.getElementById('ee-amount').value) || 0;
       r.paidTo = document.getElementById('ee-to').value;
@@ -1049,12 +1072,38 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       if (linkedCfId2 && linkedCfId2 !== linkedCfId) linkedCfIds.push(linkedCfId2);
       r.linkedCfId = linkedCfId;
       r.linkedCfIds = linkedCfIds.length ? linkedCfIds : null;
-      await updateExpenseDB(id, r); await loadFromCloud(); toast('✓ Updated'); render()
+      await updateExpenseDB(id, r); await loadFromCloud(); btnReset(btn); toast('✓ Updated'); render()
     }
 
     function closeModal(e) { if (e.target.classList.contains('modal-overlay')) closeM() }
     function closeM() { document.getElementById('modal-root').innerHTML = '' }
     function toast(m) { const t = document.createElement('div'); t.textContent = m; t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:10px 22px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;animation:slideIn 0.3s;box-shadow:0 6px 20px rgba(16,185,129,0.3);'; document.body.appendChild(t); setTimeout(() => t.remove(), 2500) }
+
+    // Premium confirm modal (replaces native confirm)
+    function confirmModal(title, msg, icon, btnLabel, btnClass){
+      return new Promise(resolve=>{
+        const id='confirm-'+Date.now();
+        const el=document.createElement('div');
+        el.id=id;
+        el.className='confirm-overlay';
+        const iconBg=btnClass==='confirm-btn-danger'?'background:#7f1d1d40;':'background:#065f4640;';
+        el.innerHTML=`<div class="confirm-box">
+          <div class="confirm-icon" style="${iconBg}">${icon}</div>
+          <div class="confirm-title">${title}</div>
+          <div class="confirm-msg">${msg}</div>
+          <div class="confirm-btns">
+            <button class="confirm-btn-cancel" onclick="document.getElementById('${id}').remove();window._confirmResolve(false)">Cancel</button>
+            <button class="${btnClass}" onclick="document.getElementById('${id}').remove();window._confirmResolve(true)">${btnLabel}</button>
+          </div>
+        </div>`;
+        window._confirmResolve=resolve;
+        document.body.appendChild(el);
+      });
+    }
+
+    // Button loading state helpers
+    function btnLoad(btn){if(!btn)return;btn.classList.add('btn-loading');btn.dataset.origText=btn.textContent;btn.disabled=true}
+    function btnReset(btn){if(!btn)return;btn.classList.remove('btn-loading');btn.disabled=false}
 
     // ═══════════════════════════════════════════════════════════════════════
     // REPORTS VIEW
