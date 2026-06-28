@@ -367,19 +367,22 @@
     function go(t) { tab = t; render() }
     const inputS = 'width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;';
     function fld(l, inp) { return `<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:5px;">${l}</div>${inp}</div>` }
+    function actBtns(editFn,delFn){if(!isAdmin())return'';return`<button class="action-btn" onclick="${editFn}" title="Edit">✏️</button><button class="action-btn" onclick="${delFn}" title="Delete">🗑️</button>`}
 
     // ═══════════════════════════════════════════════════════════════════════
     // NAV
     // ═══════════════════════════════════════════════════════════════════════
     function nav() {
-      const ts = [{ id: 'dashboard', l: 'Dashboard', i: '📊' }, { id: 'cashflow', l: 'Cash Flow', i: '💰' }, { id: 'expenses', l: 'Expenses', i: '📋' }, { id: 'add', l: 'Add', i: '➕' }, { id: 'reports', l: 'Reports', i: '📄' }];
+      const allTabs = [{ id: 'dashboard', l: 'Dashboard', i: '📊' }, { id: 'cashflow', l: 'Cash Flow', i: '💰' }, { id: 'expenses', l: 'Expenses', i: '📋' }, { id: 'add', l: 'Add', i: '➕', admin: true }, { id: 'reports', l: 'Reports', i: '📄' }];
+      const ts = allTabs.filter(t => !t.admin || isAdmin());
       const linked=db.expenses.filter(e=>e.linkedCfId||(e.linkedCfIds&&e.linkedCfIds.length)).length;
       return `<nav class="app-nav" style="background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;">
     <div style="display:flex;align-items:center;gap:10px;padding:12px 0;">
       <div style="width:34px;height:34px;background:linear-gradient(135deg,var(--accent),#059669);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">🌾</div>
       <div><div style="font-size:14px;font-weight:700;">Crops Farming</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Cashflow Manager</div></div>
       <div class="link-pill" style="margin-left:10px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:10px;font-weight:700;color:var(--accent);">🔗 ${linked}/${db.expenses.length}</div>
-      <button onclick="doLogout()" style="margin-left:8px;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:600;color:var(--muted);cursor:pointer;" title="Sign Out">🚪</button>
+      <div style="margin-left:6px;padding:4px 8px;background:${isAdmin()?'#065f4630':'#3b82f620'};border:1px solid ${isAdmin()?'var(--accent)':'var(--blue)'};border-radius:6px;font-size:9px;font-weight:700;color:${isAdmin()?'var(--accent)':'var(--blue)'};">${isAdmin()?'👑 Admin':'👁️ Viewer'}</div>
+      <button onclick="doLogout()" style="margin-left:6px;background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:10px;font-weight:600;color:var(--muted);cursor:pointer;" title="Sign Out">🚪</button>
     </div>
     <div class="nav-tabs" style="display:flex;gap:3px;">${ts.map(t=>`<button onclick="go('${t.id}')" style="background:${tab===t.id?'var(--accent)':'transparent'};color:${tab===t.id?'#fff':'var(--muted)'};border:none;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;flex-direction:row;"><span>${t.i}</span><span class="nav-label">${t.l}</span></button>`).join('')}</div>
   </nav>
@@ -393,7 +396,7 @@
         case 'dashboard': return dashboard();
         case 'cashflow': return cashflowView();
         case 'expenses': return expensesView();
-        case 'add': return addView();
+        case 'add': return isAdmin()?addView():(tab='dashboard',dashboard());
         case 'reports': return reportsView();
       }
     }
@@ -550,7 +553,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       return `<div style="padding:24px;max-width:1200px;margin:0 auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <div><div style="font-size:16px;font-weight:800;">Cash Flow Records</div><div style="font-size:11px;color:var(--muted);">${rows.length} transactions (${inRows.length} IN, ${outRows.length} OUT)</div></div>
-      <button onclick="go('add');setTimeout(()=>togForm('cf'),50)" style="background:var(--accent);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:11px;font-weight:700;">+ Add Transaction</button>
+      ${isAdmin()?`<button onclick="go('add');setTimeout(()=>togForm('cf'),50)" style="background:var(--accent);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:11px;font-weight:700;">+ Add Transaction</button>`:''}
     </div>
     ${inRows.length ? `<div style="margin-bottom:20px;">
       <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:6px;"><span class="badge badge-in">↓ IN</span> Funding Received (AED ${fmt(inRows.reduce((s, r) => s + r.amountAED, 0))})</div>
@@ -566,8 +569,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
             <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:10px;">${r.transferDate || '—'}</td>
             <td style="padding:9px 12px;color:var(--muted);font-size:10px;">${r.notes || '—'}</td>
             <td style="padding:9px 12px;text-align:center;white-space:nowrap;">
-              <button class="action-btn" onclick="editCF(${r.id})" title="Edit">✏️</button>
-              <button class="action-btn" onclick="delRec('cashflow',${r.id})" title="Delete">🗑️</button>
+              ${actBtns(`editCF(${r.id})`,`delRec('cashflow',${r.id})`)}
             </td>
           </tr>`).join('')}</tbody>
         </table>
@@ -594,8 +596,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
             <td style="padding:9px 12px;text-align:right;font-weight:700;color:${over ? 'var(--red)' : 'var(--accent)'};">${fmtI(used)}${over ? ' ⚠' : ''}</td>
             <td style="padding:9px 12px;color:var(--muted);font-size:10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.notes || '—'}</td>
             <td style="padding:9px 12px;text-align:center;white-space:nowrap;">
-              <button class="action-btn" onclick="editCF(${r.id})" title="Edit">✏️</button>
-              <button class="action-btn" onclick="delRec('cashflow',${r.id})" title="Delete">🗑️</button>
+              ${actBtns(`editCF(${r.id})`,`delRec('cashflow',${r.id})`)}
             </td>
           </tr>`}).join('')}</tbody>
         </table>
@@ -616,7 +617,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       return `<div style="padding:24px;max-width:1200px;margin:0 auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <div><div style="font-size:16px;font-weight:800;">Expense Records</div><div style="font-size:11px;color:var(--muted);">${rows.length} disbursements · Total: <strong style="color:var(--accent);">K ${fmtI(total)}</strong></div></div>
-      <button onclick="tab='add';render();setTimeout(()=>togForm('exp'),50)" style="background:var(--accent);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:11px;font-weight:700;">+ Add Expense</button>
+      ${isAdmin()?`<button onclick="tab='add';render();setTimeout(()=>togForm('exp'),50)" style="background:var(--accent);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:11px;font-weight:700;">+ Add Expense</button>`:''}
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
@@ -649,8 +650,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
           <td style="padding:9px 14px;color:var(--muted);font-size:10px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${r.purpose}</td>
           <td style="padding:9px 14px;">${linkDisplay}</td>
           <td style="padding:9px 14px;text-align:center;white-space:nowrap;">
-            <button class="action-btn" onclick="editExp(${r.id})" title="Edit">✏️</button>
-            <button class="action-btn" onclick="delRec('expenses',${r.id})" title="Delete">🗑️</button>
+            ${actBtns(`editExp(${r.id})`,`delRec('expenses',${r.id})`)}
           </td>
         </tr>`}).join('')}
         <tr style="background:var(--bg);"><td colspan="2" style="padding:11px 14px;font-weight:800;">TOTAL</td><td style="padding:11px 14px;text-align:right;font-weight:900;color:var(--orange);font-size:13px;">K ${fmtI(total)}</td><td colspan="4" style="padding:11px 14px;color:var(--muted);font-size:10px;">${rows.length} payments · ${persons.length} recipients</td></tr>
@@ -1115,11 +1115,11 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       const persons = [...new Set(db.expenses.map(r => r.paidTo))].sort();
       return `<div style="padding:24px;max-width:1000px;margin:0 auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div><div style="font-size:16px;font-weight:800;">Reports & Export</div><div style="font-size:11px;color:var(--muted);">Filter data, select sections, then download</div></div>
-      <div style="display:flex;gap:8px;">
+      <div><div style="font-size:16px;font-weight:800;">Reports & Export</div><div style="font-size:11px;color:var(--muted);">Filter data, select sections${isAdmin()?', then download':''}</div></div>
+      ${isAdmin()?`<div style="display:flex;gap:8px;">
         <button onclick="generateExcel()" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">📊 Excel</button>
         <button onclick="generatePDF()" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">📄 PDF</button>
-      </div>
+      </div>`:`<div style="padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px;">🔒 View only</div>`}
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;">
       <div style="font-size:12px;font-weight:700;margin-bottom:12px;">🔍 Filter Data</div>
@@ -1478,6 +1478,14 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
     // AUTH & LOGIN
     // ═══════════════════════════════════════════════════════════════════════
     let currentUser=null;
+    let userRole='viewer';
+    function isAdmin(){return userRole==='admin'}
+    function isViewer(){return userRole!=='admin'}
+
+    async function fetchUserRole(email){
+      const{data}=await supa.from('user_roles').select('role').eq('email',email).single();
+      return data?data.role:'viewer';
+    }
 
     function showLogin(error=''){
       document.getElementById('app').innerHTML=`
@@ -1491,7 +1499,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
             ${error?`<div style="background:#7f1d1d30;border:1px solid var(--red);border-radius:8px;padding:10px;margin-bottom:16px;font-size:11px;color:var(--red);text-align:center;">${error}</div>`:''}
             <div style="margin-bottom:14px;">
               <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:5px;">Email</div>
-              <input id="login-email" type="email" value="ccfarmzambia@gmail.com" style="${inputS}" placeholder="your@email.com"/>
+              <input id="login-email" type="email" value="partner@cfz.com" style="${inputS}" placeholder="your@email.com"/>
             </div>
             <div style="margin-bottom:20px;">
               <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:5px;">Password</div>
@@ -1512,6 +1520,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       const{data,error}=await supa.auth.signInWithPassword({email,password:pass});
       if(error){btnReset(btn);showLogin(error.message);return}
       currentUser=data.user;
+      userRole=await fetchUserRole(currentUser.email);
       await startApp();
     }
 
@@ -1553,6 +1562,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       const{data:{session}}=await supa.auth.getSession();
       if(session&&session.user){
         currentUser=session.user;
+        userRole=await fetchUserRole(currentUser.email);
         await startApp();
       } else {
         showLogin();
