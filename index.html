@@ -213,6 +213,33 @@
       background: #065f4630;
       color: var(--accent)
     }
+
+    /* ═══ MOBILE RESPONSIVE ═══ */
+    @media(max-width:768px){
+      .app-nav{padding:0 12px!important}
+      .app-nav .nav-tabs{display:none!important}
+      .app-nav .link-pill{display:none!important}
+      .mobile-nav{display:flex!important}
+      body{padding-bottom:70px}
+      [style*="grid-template-columns:repeat(4"]{grid-template-columns:repeat(2,1fr)!important}
+      [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
+      [style*="padding:24px"]{padding:14px!important}
+      [style*="max-width:1200px"]{max-width:100%!important}
+      [style*="max-width:1000px"]{max-width:100%!important}
+      [style*="max-width:680px"]{max-width:100%!important}
+    }
+    @media(min-width:769px){
+      .mobile-nav{display:none!important}
+    }
+    @media(max-width:480px){
+      body{font-size:13px}
+      table{font-size:9px!important}
+      td,th{padding:5px 6px!important}
+      .modal-box{padding:16px;width:98%!important;max-width:none!important}
+      .link-badge{font-size:8px;padding:2px 5px}
+      [style*="grid-template-columns:repeat(auto-fit,minmax(185px"]{grid-template-columns:repeat(2,1fr)!important}
+      [style*="display:flex;gap:8px;margin-bottom:20px"]{flex-direction:column}
+    }
   </style>
 </head>
 
@@ -328,15 +355,20 @@
     // NAV
     // ═══════════════════════════════════════════════════════════════════════
     function nav() {
-      const ts = [{ id: 'dashboard', l: 'Dashboard', i: '📊' }, { id: 'cashflow', l: 'Cash Flow', i: '💰' }, { id: 'expenses', l: 'Expenses', i: '📋' }, { id: 'add', l: 'Add Record', i: '➕' }, { id: 'reports', l: 'Reports', i: '📄' }];
-      return `<nav style="background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;">
+      const ts = [{ id: 'dashboard', l: 'Dashboard', i: '📊' }, { id: 'cashflow', l: 'Cash Flow', i: '💰' }, { id: 'expenses', l: 'Expenses', i: '📋' }, { id: 'add', l: 'Add', i: '➕' }, { id: 'reports', l: 'Reports', i: '📄' }];
+      const linked=db.expenses.filter(e=>e.linkedCfId||(e.linkedCfIds&&e.linkedCfIds.length)).length;
+      return `<nav class="app-nav" style="background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;">
     <div style="display:flex;align-items:center;gap:10px;padding:12px 0;">
       <div style="width:34px;height:34px;background:linear-gradient(135deg,var(--accent),#059669);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">🌾</div>
       <div><div style="font-size:14px;font-weight:700;">Crops Farming</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Cashflow Manager</div></div>
-      <div style="margin-left:10px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:10px;font-weight:700;color:var(--accent);">🔗 ${db.expenses.filter(e => e.linkedCfId || (e.linkedCfIds && e.linkedCfIds.length)).length}/${db.expenses.length} linked</div>
+      <div class="link-pill" style="margin-left:10px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:10px;font-weight:700;color:var(--accent);">🔗 ${linked}/${db.expenses.length}</div>
     </div>
-    <div style="display:flex;gap:3px;">${ts.map(t => `<button onclick="go('${t.id}')" style="background:${tab === t.id ? 'var(--accent)' : 'transparent'};color:${tab === t.id ? '#fff' : 'var(--muted)'};border:none;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;"><span>${t.i}</span>${t.l}</button>`).join('')}</div>
-  </nav>`}
+    <div class="nav-tabs" style="display:flex;gap:3px;">${ts.map(t=>`<button onclick="go('${t.id}')" style="background:${tab===t.id?'var(--accent)':'transparent'};color:${tab===t.id?'#fff':'var(--muted)'};border:none;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;flex-direction:row;"><span>${t.i}</span><span class="nav-label">${t.l}</span></button>`).join('')}</div>
+  </nav>
+  <!-- Mobile bottom nav -->
+  <div class="mobile-nav" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 8px 10px;z-index:100;justify-content:space-around;">
+    ${ts.map(t=>`<button onclick="go('${t.id}')" style="background:transparent;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:8px;${tab===t.id?'color:var(--accent);':'color:var(--muted);'}"><span style="font-size:18px;">${t.i}</span><span style="font-size:8px;font-weight:700;">${t.l}</span></button>`).join('')}
+  </div>`}
 
     function content() {
       switch (tab) {
