@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crops Farming Cashflow — Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d26;
+      --surface2: #22262f;
+      --border: #2a2f3a;
+      --text: #e8eaf0;
+      --muted: #8b91a0;
+      --accent: #10b981;
+      --accentDk: #065f46;
+      --orange: #f59e0b;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --purple: #8b5cf6;
+      --radius: 12px
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      line-height: 1.5;
+      min-height: 100vh
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(20px);
+        opacity: 0
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0
+      }
+
+      to {
+        opacity: 1
+      }
+    }
+
+    button {
+      cursor: pointer;
+      transition: all 0.15s
+    }
+
+    button:hover {
+      opacity: 0.9
+    }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15)
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg)
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px
+    }
+
+    table {
+      font-variant-numeric: tabular-nums;
+      border-collapse: collapse
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s
+    }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 92%;
+      max-width: 620px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: slideIn 0.3s
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      display: inline-block
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0
+    }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 24px;
+      transition: 0.3s
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.3s
+    }
+
+    .toggle-switch input:checked+.toggle-slider {
+      background: var(--accent)
+    }
+
+    .toggle-switch input:checked+.toggle-slider::before {
+      transform: translateX(20px)
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700
+    }
+
+    .badge-in {
+      background: #065f4630;
+      color: #10b981
+    }
+
+    .badge-out {
+      background: #7f1d1d30;
+      color: #ef4444
+    }
+
+    .action-btn {
+      background: none;
+      border: none;
+      font-size: 14px;
+      padding: 4px;
+      border-radius: 6px
+    }
+
+    .action-btn:hover {
+      background: var(--surface2)
+    }
+
+    .warn-box {
+      background: #7f1d1d30;
+      border: 1px solid var(--red);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--red)
+    }
+
+    .link-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 9px;
+      font-weight: 700;
+      background: #065f4630;
+      color: var(--accent)
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+  <div id="modal-root"></div>
+  <script>
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // DATA LAYER
+    // ═══════════════════════════════════════════════════════════════════════
+    const DB_KEY = 'farm_v4';
+    function getDB() {
+      // Try v4 first
+      const r = localStorage.getItem(DB_KEY);
+      if (r) return JSON.parse(r);
+      // Migrate from v3
+      const v3 = localStorage.getItem('farm_v3');
+      if (v3) { const d = JSON.parse(v3); d.cashflow.forEach(c => { if (!c.id) c.id = nextId(d.cashflow) }); d.expenses.forEach((e, i) => { if (!e.linkedCfId) e.linkedCfId = null }); saveDB(d); return d }
+      return { cashflow: [], expenses: [] }
+    }
+    function saveDB(d) { localStorage.setItem(DB_KEY, JSON.stringify(d)) }
+    function nextId(a) { return a.length ? Math.max(...a.map(r => r.id)) + 1 : 1 }
+
+    // Get total expenses linked to a specific cashflow-out record, properly distributing co-links
+    function getLinkedTotal(db, cfId) {
+      const allocations = {};
+      db.expenses.forEach(e => {
+        const cfIds = e.linkedCfIds && e.linkedCfIds.length ? e.linkedCfIds : (e.linkedCfId ? [e.linkedCfId] : []);
+        if (!cfIds.length) return;
+
+        if (cfIds.length === 1) {
+          // Single link: assign full amount
+          allocations[cfIds[0]] = (allocations[cfIds[0]] || 0) + e.amount;
+        } else {
+          // Co-link: split the amount sequentially based on available budget
+          let remExp = e.amount;
+          cfIds.forEach((id, idx) => {
+            if (remExp <= 0) return;
+            const cf = db.cashflow.find(c => c.id === id);
+            if (!cf) return;
+
+            const currentlyUsed = allocations[id] || 0;
+            const available = (cf.zmwEquiv || 0) - currentlyUsed;
+
+            // If it's the last CF link, it absorbs whatever is left (even if it goes over budget)
+            if (idx === cfIds.length - 1) {
+              allocations[id] = currentlyUsed + remExp;
+            } else {
+              // Otherwise, it only takes up to its available limit
+              const toTake = Math.max(available, 0);
+              const applied = Math.min(toTake, remExp);
+              allocations[id] = currentlyUsed + applied;
+              remExp -= applied;
+            }
+          });
+        }
+      });
+      return allocations[cfId] || 0;
+    }
+    // Get remaining budget for a cashflow-out record
+    function getRemaining(db, cfId) {
+      const cf = db.cashflow.find(c => c.id === cfId);
+      if (!cf || cf.type !== 'out') return 0;
+      return (cf.zmwEquiv || 0) - getLinkedTotal(db, cfId);
+    }
+
+    function seedData() {
+      const db = getDB();
+      if (db.cashflow.length === 0 && db.expenses.length === 0) {
+        db.cashflow = [
+          { id: 1, sn: 1, type: 'in', partner: 'David Agbenga', amountAED: 14000, transferDate: '2025-06-02', exchangeDate: '', exchRate: 0, zmwEquiv: 0, notes: 'Initial funding' },
+          { id: 2, sn: 2, type: 'out', partner: '', amountAED: 318.27, transferDate: '', exchangeDate: '2025-06-03', exchRate: 4.72, zmwEquiv: 1501, notes: 'Lawyer mobilization' },
+          { id: 3, sn: 3, type: 'out', partner: '', amountAED: 4261.03, transferDate: '', exchangeDate: '2025-06-08', exchRate: 4.69, zmwEquiv: 20000, notes: 'Tapi - Land lease - part payment' },
+          { id: 4, sn: 4, type: 'out', partner: '', amountAED: 106.52, transferDate: '', exchangeDate: '2025-06-08', exchRate: 4.69, zmwEquiv: 500, notes: 'Saidou - support in measuring the land' },
+          { id: 5, sn: 5, type: 'out', partner: '', amountAED: 2123.87, transferDate: '', exchangeDate: '2025-06-10', exchRate: 4.71, zmwEquiv: 10000.03, notes: 'Steve - mobilize people for clearing' },
+          { id: 6, sn: 6, type: 'out', partner: '', amountAED: 4229.67, transferDate: '', exchangeDate: '2025-06-10', exchRate: 4.73, zmwEquiv: 20000, notes: 'Tapi - Land lease - full payment' },
+          { id: 7, sn: 7, type: 'out', partner: '', amountAED: 525.82, transferDate: '', exchangeDate: '2025-06-08', exchRate: 4.76, zmwEquiv: 2501, notes: 'Lawyer retainers fee - agreement completed' },
+          { id: 8, sn: 8, type: 'out', partner: '', amountAED: 57.33, transferDate: '', exchangeDate: '2025-06-24', exchRate: 4.83, zmwEquiv: 277, notes: 'Saidou - price bulldozer costs' },
+        ];
+        db.expenses = [
+          { id: 1, date: '2025-06-03', amount: 1501, paidTo: 'Arthur', purpose: 'Lawyer mobilization', linkedCfId: 2 },
+          { id: 2, date: '2025-06-08', amount: 20000, paidTo: 'Tapison', purpose: 'Land lease - part payment', linkedCfId: 3 },
+          { id: 3, date: '2025-06-08', amount: 500, paidTo: 'Saidou', purpose: 'Support in measuring the land', linkedCfId: 4 },
+          { id: 4, date: '2025-06-10', amount: 10000.03, paidTo: 'Steve', purpose: 'Mobilize people for clearing', linkedCfId: 5 },
+          { id: 5, date: '2025-06-10', amount: 20000, paidTo: 'Tapison', purpose: 'Land lease - full payment', linkedCfId: 6 },
+          { id: 6, date: '2025-06-08', amount: 2501, paidTo: 'Arthur', purpose: 'Lawyer retainers fee - agreement completed', linkedCfId: 7 },
+          { id: 7, date: '2025-06-24', amount: 277, paidTo: 'Saidou', purpose: 'Price bulldozer costs', linkedCfId: 8 },
+        ];
+        saveDB(db);
+      }
+      return db;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ANALYTICS
+    // ═══════════════════════════════════════════════════════════════════════
+    function analytics(db, filters = {}) {
+      let cf = db.cashflow, exp = db.expenses;
+      if (filters.from) { cf = cf.filter(r => (r.exchangeDate || r.transferDate) >= filters.from); exp = exp.filter(r => r.date >= filters.from) }
+      if (filters.to) { cf = cf.filter(r => (r.exchangeDate || r.transferDate) <= filters.to); exp = exp.filter(r => r.date <= filters.to) }
+      if (filters.person) { exp = exp.filter(r => r.paidTo === filters.person) }
+      if (filters.type && filters.type !== 'all') { cf = cf.filter(r => r.type === filters.type) }
+
+      const totalIn = cf.filter(r => r.type === 'in').reduce((s, r) => s + (r.amountAED || 0), 0);
+      const totalOut = cf.filter(r => r.type === 'out').reduce((s, r) => s + (r.amountAED || 0), 0);
+      const balance = totalIn - totalOut;
+      const totalZMW = cf.filter(r => r.type === 'out').reduce((s, r) => s + (r.zmwEquiv || 0), 0);
+      const totalExp = exp.reduce((s, r) => s + (r.amount || 0), 0);
+      const byPerson = {}; exp.forEach(r => { byPerson[r.paidTo] = (byPerson[r.paidTo] || 0) + r.amount });
+      const sorted = [...exp].sort((a, b) => new Date(a.date) - new Date(b.date));
+      const dateMap = {}; let cum = 0; sorted.forEach(r => { cum += r.amount; dateMap[r.date] = cum });
+      const rates = cf.filter(r => r.exchRate > 0).map(r => r.exchRate);
+      const avgRate = rates.length ? rates.reduce((s, r) => s + r, 0) / rates.length : 0;
+      const cats = { 'Land Lease': 0, 'Legal/Lawyer': 0, 'Labor': 0, 'Equipment/Machinery': 0, 'Seeds': 0, 'Fertilizers/Manure': 0, 'Tools': 0, 'Shelter': 0, 'Survey/Measurement': 0, 'Transportation': 0, 'Talk Time': 0, 'Other': 0 };
+      exp.forEach(r => { const cat=r.category||''; if(cat&&cats.hasOwnProperty(cat)){cats[cat]+=r.amount}else if(cat){cats[cat]=(cats[cat]||0)+r.amount}else{const n=(r.purpose||'').toLowerCase();if(n.includes('land')||n.includes('lease')||n.includes('tapi'))cats['Land Lease']+=r.amount;else if(n.includes('lawyer')||n.includes('retainer')||n.includes('agreement')||n.includes('legal'))cats['Legal/Lawyer']+=r.amount;else if(n.includes('equip')||n.includes('machine')||n.includes('tractor')||n.includes('bulldozer'))cats['Equipment/Machinery']+=r.amount;else if(n.includes('seed')||n.includes('plant'))cats['Seeds']+=r.amount;else if(n.includes('fertil')||n.includes('manure')||n.includes('compost'))cats['Fertilizers/Manure']+=r.amount;else if(n.includes('tool')||n.includes('hoe')||n.includes('spade')||n.includes('cutlass'))cats['Tools']+=r.amount;else if(n.includes('shelter')||n.includes('shed')||n.includes('store')||n.includes('build'))cats['Shelter']+=r.amount;else if(n.includes('labour')||n.includes('labor')||n.includes('clearing')||n.includes('mobilize')||n.includes('worker')||n.includes('steve'))cats['Labor']+=r.amount;else if(n.includes('measuring')||n.includes('survey')||n.includes('measure'))cats['Survey/Measurement']+=r.amount;else if(n.includes('transport')||n.includes('fuel')||n.includes('travel')||n.includes('bus')||n.includes('taxi'))cats['Transportation']+=r.amount;else if(n.includes('airtime')||n.includes('talk')||n.includes('call')||n.includes('phone')||n.includes('recharge'))cats['Talk Time']+=r.amount;else cats['Other']+=r.amount} });
+
+      // Linkage analytics
+      const linkedExp = exp.filter(e => e.linkedCfId || (e.linkedCfIds && e.linkedCfIds.length));
+      const unlinkedExp = exp.filter(e => !e.linkedCfId && !(e.linkedCfIds && e.linkedCfIds.length));
+      const outRecords = cf.filter(r => r.type === 'out');
+      const overBudget = outRecords.filter(r => { const used = getLinkedTotal(db, r.id); return used > (r.zmwEquiv || 0) && (r.zmwEquiv || 0) > 0 });
+
+      const inCount = cf.filter(r => r.type === 'in').length;
+      const outCount = cf.filter(r => r.type === 'out').length;
+      return { totalIn, totalOut, balance, totalZMW, totalExp, byPerson, dateMap, avgRate, cats, txCount: cf.length, inCount, outCount, expCount: exp.length, filteredCF: cf, filteredExp: exp, linkedExp, unlinkedExp, overBudget };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════════════════
+    let tab = 'dashboard', db = seedData(), filters = { from: '', to: '', person: '', type: 'all' }, budgetExpanded = false;
+    function fmt(n) { return (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+    function fmtI(n) { return (n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) }
+    function render() { db = getDB(); document.getElementById('app').innerHTML = nav() + content(); document.getElementById('modal-root').innerHTML = '' }
+    function go(t) { tab = t; render() }
+    const inputS = 'width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;';
+    function fld(l, inp) { return `<div><div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:5px;">${l}</div>${inp}</div>` }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // NAV
+    // ═══════════════════════════════════════════════════════════════════════
+    function nav() {
+      const ts = [{ id: 'dashboard', l: 'Dashboard', i: '📊' }, { id: 'cashflow', l: 'Cash Flow', i: '💰' }, { id: 'expenses', l: 'Expenses', i: '📋' }, { id: 'add', l: 'Add Record', i: '➕' }, { id: 'reports', l: 'Reports', i: '📄' }];
+      return `<nav style="background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 0;">
+      <div style="width:34px;height:34px;background:linear-gradient(135deg,var(--accent),#059669);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">🌾</div>
+      <div><div style="font-size:14px;font-weight:700;">Crops Farming</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Cashflow Manager</div></div>
+      <div style="margin-left:10px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:10px;font-weight:700;color:var(--accent);">🔗 ${db.expenses.filter(e => e.linkedCfId || (e.linkedCfIds && e.linkedCfIds.length)).length}/${db.expenses.length} linked</div>
+    </div>
+    <div style="display:flex;gap:3px;">${ts.map(t => `<button onclick="go('${t.id}')" style="background:${tab === t.id ? 'var(--accent)' : 'transparent'};color:${tab === t.id ? '#fff' : 'var(--muted)'};border:none;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;"><span>${t.i}</span>${t.l}</button>`).join('')}</div>
+  </nav>`}
+
+    function content() {
+      switch (tab) {
+        case 'dashboard': return dashboard();
+        case 'cashflow': return cashflowView();
+        case 'expenses': return expensesView();
+        case 'add': return addView();
+        case 'reports': return reportsView();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // DASHBOARD — with linkage analytics & Partner Share
+    // ═══════════════════════════════════════════════════════════════════════
+    function dashboard() {
+      const a = analytics(db);
+      const util = a.totalIn > 0 ? ((a.totalOut / a.totalIn) * 100).toFixed(1) : 0;
+      const cC = { 'Land Lease': '#10b981', 'Legal/Lawyer': '#3b82f6', 'Labor': '#f59e0b', 'Equipment/Machinery': '#ef4444', 'Seeds': '#22c55e', 'Fertilizers/Manure': '#a855f7', 'Tools': '#f97316', 'Shelter': '#06b6d4', 'Survey/Measurement': '#8b5cf6', 'Transportation': '#0ea5e9', 'Talk Time': '#ec4899', 'Other': '#6b7280' };
+      const extraColors=['#14b8a6','#eab308','#84cc16','#f43f5e','#a3e635'];
+      const ce = Object.entries(a.cats).filter(([, v]) => v > 0).sort((a,b)=>b[1]-a[1]);
+      ce.forEach(([c],i)=>{if(!cC[c])cC[c]=extraColors[i%extraColors.length]});
+      const ct = ce.reduce((s, [, v]) => s + v, 0) || 1;
+      let ca = 0; const segs = ce.map(([c, v]) => { const s = ca; ca += (v / ct) * 360; return { c, v, s, e: ca, col: cC[c] } });
+      function pt(cx, cy, r, ang) { const d = (ang - 90) * Math.PI / 180; return { x: cx + r * Math.cos(d), y: cy + r * Math.sin(d) } }
+      function ap(cx, cy, r, sa, ea) { const s = pt(cx, cy, r, ea), e = pt(cx, cy, r, sa); return `M ${s.x} ${s.y} A ${r} ${r} 0 ${ea - sa > 180 ? 1 : 0} 0 ${e.x} ${e.y}` }
+      const donut = `<svg viewBox="0 0 200 200" style="width:160px;height:160px;">${segs.map(s => `<path d="${ap(100, 100, 75, s.s, s.e - 0.5)}" fill="none" stroke="${s.col}" stroke-width="22" stroke-linecap="round"/>`).join('')}<text x="100" y="92" text-anchor="middle" fill="#e8eaf0" font-size="16" font-weight="800">${fmtI(ct)}</text><text x="100" y="108" text-anchor="middle" fill="#8b91a0" font-size="9">ZMW</text></svg>`;
+
+      const pe = Object.entries(a.byPerson).sort((a, b) => b[1] - a[1]);
+      const mp = pe.length ? pe[0][1] : 1;
+      const pc = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444'];
+
+      // Calculate Partner Shares
+      const partnerTotals = {};
+      db.cashflow.filter(r => r.type === 'in').forEach(r => {
+        const p = r.partner || 'Unknown';
+        partnerTotals[p] = (partnerTotals[p] || 0) + (r.amountAED || 0);
+      });
+      const partnerShares = Object.entries(partnerTotals).map(([p, amt]) => {
+        return { partner: p, amount: amt, pct: a.totalIn > 0 ? ((amt / a.totalIn) * 100).toFixed(1) : 0 };
+      }).sort((x, y) => y.amount - x.amount);
+      const mpShare = partnerShares.length ? partnerShares[0].amount : 1;
+
+      // Budget utilization per cashflow-out
+      const outRecs = db.cashflow.filter(r => r.type === 'out' && r.zmwEquiv > 0);
+      const budgetRows = outRecs.map(r => {
+        const used = getLinkedTotal(db, r.id);
+        const pct = r.zmwEquiv > 0 ? ((used / r.zmwEquiv) * 100).toFixed(0) : 0;
+        return { id: r.id, sn: r.sn, notes: r.notes, budget: r.zmwEquiv, used, remaining: r.zmwEquiv - used, pct };
+      });
+
+      return `<div style="padding:24px;max-width:1200px;margin:0 auto;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px;margin-bottom:22px;">
+      ${kpi('Total Funded', `AED ${fmt(a.totalIn)}`, '💵', '--accent', a.inCount + ' CF-IN')}
+      ${kpi('Total Spent', `AED ${fmt(a.totalOut)}`, '📤', '--orange', a.outCount + ' CF-OUT')}
+      ${kpi('Balance', `AED ${fmt(a.balance)}`, '🏦', a.balance >= 1000 ? '--accent' : (a.balance >= 0 ? '--orange' : '--red'), a.balance >= 1000 ? 'Healthy' : (a.balance >= 0 ? '⚠ Low' : '⚠ Over'))}
+      ${kpi('ZMW Expenses', `K ${fmt(a.totalExp)}`, '💸', '--blue', a.expCount + ' payments')}
+      ${kpi('Avg Rate', a.avgRate.toFixed(2), '💱', '--purple', 'AED→ZMW')}
+    </div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;margin-bottom:22px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:14px;">Spend by Category</div>
+        <div style="display:flex;align-items:center;gap:16px;">${donut}<div style="flex:1;">${ce.map(([c, v]) => `<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;"><div style="width:9px;height:9px;border-radius:3px;background:${cC[c]};"></div><div style="flex:1;font-size:11px;"><div style="color:var(--muted);">${c}</div><div style="font-weight:700;">K ${fmtI(v)}</div></div><div style="font-size:10px;color:var(--muted);">${(v / ct * 100).toFixed(0)}%</div></div>`).join('')}</div></div>
+      </div>
+      
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;"><div style="font-size:12px;font-weight:700;">By Recipient (ZMW)</div><div style="font-size:9px;color:var(--muted);">${pe.length} recipients</div></div>
+        <div style="max-height:280px;overflow-y:auto;padding-right:4px;">
+        ${pe.slice(0,6).map(([n, v], i) => `<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:11px;font-weight:600;">${n}</span><span style="font-size:11px;font-weight:700;color:${pc[i % 5]};">K ${fmtI(v)}</span></div><div style="background:var(--surface2);border-radius:5px;height:8px;overflow:hidden;"><div style="background:${pc[i % 5]};height:100%;width:${(v / mp * 100).toFixed(1)}%;border-radius:5px;"></div></div></div>`).join('')}
+        ${pe.length>6?`<div style="font-size:9px;color:var(--muted);text-align:center;padding-top:4px;">+${pe.length-6} more</div>`:''}
+        </div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:14px;">Partner Share (AED)</div>
+        ${partnerShares.length ? partnerShares.map((ps, i) => `<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:11px;font-weight:600;">${ps.partner}</span><span style="font-size:11px;font-weight:700;color:var(--accent);">AED ${fmt(ps.amount)} <span style="color:var(--muted);font-weight:500;">(${ps.pct}%)</span></span></div><div style="background:var(--surface2);border-radius:5px;height:8px;overflow:hidden;"><div style="background:var(--accent);height:100%;width:${ps.pct}%;border-radius:5px;"></div></div></div>`).join('') : '<div style="font-size:11px;color:var(--muted);">No funding records yet.</div>'}
+      </div>
+    </div>
+
+    ${(() => {
+          const de = Object.entries(a.dateMap);
+          const mc = de.length ? de[de.length - 1][1] : 1;
+          const lp = de.map(([, v], i) => `${20 + ((i / (de.length - 1 || 1)) * 360)},${130 - (v / mc) * 100}`).join(' ');
+          return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:22px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px;"><div style="font-size:12px;font-weight:700;">Cumulative Expenses</div><div style="font-size:11px;font-weight:700;color:var(--accent);">K ${fmtI(mc)}</div></div>
+        <svg viewBox="0 0 400 150" style="width:100%;height:140px;"><defs><linearGradient id="aG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981" stop-opacity="0.25"/><stop offset="100%" stop-color="#10b981" stop-opacity="0.02"/></linearGradient></defs><line x1="20" y1="130" x2="380" y2="130" stroke="var(--border)"/>${de.length > 1 ? `<polygon points="${lp} 380,130 20,130" fill="url(#aG)"/><polyline points="${lp}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"/>${de.map(([, v], i) => { const x = 20 + (i / (de.length - 1 || 1)) * 360, y = 130 - (v / mc) * 100; return `<circle cx="${x}" cy="${y}" r="3.5" fill="#10b981" stroke="var(--surface)" stroke-width="2"/>`; }).join('')}` : ''}</svg>
+      </div>`;
+        })()}
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:22px;">
+      <div onclick="budgetExpanded=!budgetExpanded;render()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:28px;height:28px;background:linear-gradient(135deg,var(--accent),var(--blue));border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;">🔗</div>
+          <div><div style="font-size:13px;font-weight:800;">Budget Utilization</div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Cashflow-OUT → Expenses</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="text-align:right;">
+            <div style="font-size:14px;font-weight:800;color:${(() => { const avg = budgetRows.length ? Math.round(budgetRows.reduce((s, r) => s + parseFloat(r.pct), 0) / budgetRows.length) : 0; return avg > 100 ? 'var(--red)' : avg > 80 ? 'var(--orange)' : 'var(--accent)'; })()};">${budgetRows.length ? Math.round(budgetRows.reduce((s, r) => s + parseFloat(r.pct), 0) / budgetRows.length) : 0}% avg</div>
+            <div style="font-size:9px;color:var(--muted);">${budgetRows.length} records · K ${fmtI(budgetRows.reduce((s, r) => s + r.used, 0))} / K ${fmtI(budgetRows.reduce((s, r) => s + r.budget, 0))}</div>
+          </div>
+          <div style="font-size:16px;color:var(--muted);transition:transform 0.3s;transform:rotate(${budgetExpanded ? '180' : '0'}deg);">▼</div>
+        </div>
+      </div>
+      ${!budgetExpanded ? `
+        <div style="margin-top:14px;">
+          <div style="position:relative;background:var(--bg);border-radius:6px;height:10px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);">
+            <div style="background:linear-gradient(90deg,var(--accent),var(--blue));height:100%;width:${budgetRows.length ? Math.min(100, Math.round(budgetRows.reduce((s, r) => s + parseFloat(r.pct), 0) / budgetRows.length)) : 0}%;border-radius:6px;transition:width 0.5s ease;box-shadow:0 0 8px rgba(16,185,129,0.3);"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:5px;">
+            <span style="font-size:9px;color:var(--muted);">Click to expand individual records</span>
+            <span style="font-size:9px;color:var(--muted);">${budgetRows.filter(r => r.pct >= 100).length}/${budgetRows.length} fully utilized</span>
+          </div>
+        </div>
+      `: `
+        <div style="margin-top:16px;display:grid;gap:12px;">
+        ${budgetRows.map(r => {
+          const color = r.used > r.budget ? '#ef4444' : r.pct >= 100 ? '#10b981' : r.pct > 80 ? '#f59e0b' : '#3b82f6';
+          const gradient = r.used > r.budget ? 'linear-gradient(90deg,#ef4444,#f87171)' : r.pct >= 100 ? 'linear-gradient(90deg,#059669,#10b981)' : r.pct > 80 ? 'linear-gradient(90deg,#d97706,#f59e0b)' : 'linear-gradient(90deg,#2563eb,#3b82f6)';
+          const barW = Math.min(100, (r.used / r.budget * 100)).toFixed(1);
+          const statusIcon = r.used > r.budget ? '🔴' : r.pct >= 100 ? '✅' : r.pct > 80 ? '🟡' : '🔵';
+          return `<div style="background:var(--surface2);border-radius:10px;padding:14px 16px;border:1px solid var(--border);transition:all 0.2s;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:12px;">${statusIcon}</span>
+              <div>
+                <div style="font-size:11px;font-weight:700;color:var(--text);">#${r.sn} ${(r.notes || '').slice(0, 35)}</div>
+                <div style="font-size:9px;color:var(--muted);margin-top:1px;">Budget: K ${fmtI(r.budget)}</div>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:12px;font-weight:800;color:${color};">${r.pct}%</div>
+              <div style="font-size:9px;color:var(--muted);">K ${fmtI(r.used)} used</div>
+            </div>
+          </div>
+          <div style="position:relative;background:var(--bg);border-radius:6px;height:10px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3);">
+            <div style="background:${gradient};height:100%;width:${barW}%;border-radius:6px;transition:width 0.5s ease;box-shadow:0 0 8px ${color}40;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:5px;">
+            <span style="font-size:9px;color:var(--muted);">${r.used > r.budget ? `⚠ Over by K ${fmtI(r.used - r.budget)}` : `K ${fmtI(r.remaining)} remaining`}</span>
+            <span style="font-size:9px;color:var(--muted);">K ${fmtI(r.used)} / K ${fmtI(r.budget)}</span>
+          </div>
+        </div>`}).join('')}
+        </div>
+      `}
+    </div>
+
+    ${a.overBudget.length ? `<div style="background:linear-gradient(135deg,#7f1d1d20,#7f1d1d10);border:1px solid #ef444440;border-radius:var(--radius);padding:14px 18px;margin-bottom:22px;display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">⚠️</span><div><div style="font-size:11px;font-weight:700;color:var(--red);">${a.overBudget.length} record(s) over budget</div><div style="font-size:10px;color:var(--muted);">Consider redistributing expenses to other cashflow-out records.</div></div></div>` : ''}
+${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b20,#f59e0b10);border:1px solid #f59e0b40;border-radius:var(--radius);padding:14px 18px;margin-bottom:22px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="go('expenses')"><span style="font-size:18px;">🔗</span><div><div style="font-size:11px;font-weight:700;color:var(--orange);">${a.unlinkedExp.length} unlinked expense(s) found</div><div style="font-size:10px;color:var(--muted);">Click here to view your expenses and assign them to a cashflow budget.</div></div></div>` : ''}
+  </div>`}
+
+    function kpi(l, v, i, c, s) { return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative;overflow:hidden;"><div style="position:absolute;top:-8px;right:-8px;font-size:40px;opacity:0.05;">${i}</div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;font-weight:600;">${l}</div><div style="font-size:18px;font-weight:800;color:var(${c});margin:5px 0 3px;">${v}</div><div style="font-size:10px;color:var(--muted);">${s}</div></div>` }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CASHFLOW TABLE
+    // ═══════════════════════════════════════════════════════════════════════
+    function cashflowView() {
+      const rows = db.cashflow;
+      const inRows = rows.filter(r => r.type === 'in');
+      const outRows = rows.filter(r => r.type === 'out');
+      const thS = 'padding:10px 12px;text-align:left;color:var(--muted);font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid var(--border);';
+      return `<div style="padding:24px;max-width:1200px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div><div style="font-size:16px;font-weight:800;">Cash Flow Records</div><div style="font-size:11px;color:var(--muted);">${rows.length} transactions (${inRows.length} IN, ${outRows.length} OUT)</div></div>
+      <button onclick="go('add');setTimeout(()=>togForm('cf'),50)" style="background:var(--accent);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:11px;font-weight:700;">+ Add Transaction</button>
+    </div>
+    ${inRows.length ? `<div style="margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:6px;"><span class="badge badge-in">↓ IN</span> Funding Received (AED ${fmt(inRows.reduce((s, r) => s + r.amountAED, 0))})</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+        <table style="width:100%;font-size:11px;">
+          <thead><tr style="background:var(--surface2);">
+            <th style="${thS}">SN</th><th style="${thS}">Partner</th><th style="${thS}text-align:right;">Amount (AED)</th><th style="${thS}text-align:center;">Transfer Date</th><th style="${thS}">Notes</th><th style="${thS}text-align:center;">Actions</th>
+          </tr></thead>
+          <tbody>${inRows.map((r, i) => `<tr style="border-bottom:1px solid var(--border);${i % 2 ? 'background:var(--surface2);' : ''}">
+            <td style="padding:9px 12px;color:var(--muted);">${r.sn || r.id}</td>
+            <td style="padding:9px 12px;font-weight:600;">${r.partner || '—'}</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:700;color:var(--accent);">${fmt(r.amountAED)}</td>
+            <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:10px;">${r.transferDate || '—'}</td>
+            <td style="padding:9px 12px;color:var(--muted);font-size:10px;">${r.notes || '—'}</td>
+            <td style="padding:9px 12px;text-align:center;white-space:nowrap;">
+              <button class="action-btn" onclick="editCF(${r.id})" title="Edit">✏️</button>
+              <button class="action-btn" onclick="delRec('cashflow',${r.id})" title="Delete">🗑️</button>
+            </td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`: ''}
+
+    ${outRows.length ? `<div>
+      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px;display:flex;align-items:center;gap:6px;"><span class="badge badge-out">↑ OUT</span> Expenditures (AED ${fmt(outRows.reduce((s, r) => s + r.amountAED, 0))})</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+        <div style="overflow-x:auto;">
+        <table style="width:100%;font-size:11px;">
+          <thead><tr style="background:var(--surface2);">
+            <th style="${thS}">SN</th><th style="${thS}text-align:right;">AED</th><th style="${thS}text-align:center;">Exch Date</th><th style="${thS}text-align:center;">Rate</th><th style="${thS}text-align:right;">ZMW</th><th style="${thS}text-align:right;">Used</th><th style="${thS}">Notes</th><th style="${thS}text-align:center;">Actions</th>
+          </tr></thead>
+          <tbody>${outRows.map((r, i) => {
+        const used = getLinkedTotal(db, r.id);
+        const over = used > (r.zmwEquiv || 0) && (r.zmwEquiv || 0) > 0;
+        return `<tr style="border-bottom:1px solid var(--border);${i % 2 ? 'background:var(--surface2);' : ''}">
+            <td style="padding:9px 12px;color:var(--muted);">${r.sn || r.id}</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:700;">${fmt(r.amountAED)}</td>
+            <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:10px;">${r.exchangeDate || '—'}</td>
+            <td style="padding:9px 12px;text-align:center;color:var(--purple);font-weight:600;">${r.exchRate || '—'}</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:700;color:var(--orange);">${r.zmwEquiv ? fmtI(r.zmwEquiv) : '—'}</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:700;color:${over ? 'var(--red)' : 'var(--accent)'};">${fmtI(used)}${over ? ' ⚠' : ''}</td>
+            <td style="padding:9px 12px;color:var(--muted);font-size:10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.notes || '—'}</td>
+            <td style="padding:9px 12px;text-align:center;white-space:nowrap;">
+              <button class="action-btn" onclick="editCF(${r.id})" title="Edit">✏️</button>
+              <button class="action-btn" onclick="delRec('cashflow',${r.id})" title="Delete">🗑️</button>
+            </td>
+          </tr>`}).join('')}</tbody>
+        </table>
+        </div>
+      </div>
+    </div>`: ''}
+  </div>`}
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // EXPENSES TABLE — shows linked cashflow-out
+    // ═══════════════════════════════════════════════════════════════════════
+    function expensesView() {
+      const rows = db.expenses;
+      const total = rows.reduce((s, r) => s + r.amount, 0);
+      const persons = [...new Set(rows.map(r => r.paidTo))];
+      const thS = 'padding:10px 14px;text-align:left;color:var(--muted);font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:1px solid var(--border);';
+      const pCol = { Arthur: '#3b82f6', Tapison: '#10b981', Saidou: '#f59e0b', Steve: '#8b5cf6' };
+      return `<div style="padding:24px;max-width:1200px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div><div style="font-size:16px;font-weight:800;">Expense Records</div><div style="font-size:11px;color:var(--muted);">${rows.length} disbursements · Total: <strong style="color:var(--accent);">K ${fmtI(total)}</strong></div></div>
+      <button onclick="tab='add';render();setTimeout(()=>togForm('exp'),50)" style="background:var(--accent);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:11px;font-weight:700;">+ Add Expense</button>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+      <table style="width:100%;font-size:11px;">
+        <thead><tr style="background:var(--surface2);">
+          <th style="${thS}">#</th><th style="${thS}">Date</th><th style="${thS}text-align:right;">Amount (ZMW)</th><th style="${thS}">Paid To</th><th style="${thS}">Purpose</th><th style="${thS}">Linked CF</th><th style="${thS}text-align:center;">Actions</th>
+        </tr></thead>
+        <tbody>${rows.map((r, i) => {
+        const cfIds = r.linkedCfIds || (r.linkedCfId ? [r.linkedCfId] : []);
+        const cfs = cfIds.map(id => db.cashflow.find(x => x.id === id)).filter(Boolean);
+        const linkLabels = cfs.map(c => `#${c.sn} (K ${fmtI(c.zmwEquiv)})`).join(', ');
+
+        let linkDisplay = '';
+        if (cfIds.length === 0) {
+          linkDisplay = '<span class="badge" style="background:#ef444420;color:var(--red);border:1px solid #ef444450;">⚠️ Unlinked</span>';
+        } else {
+          const totalCap = cfs.reduce((sum, c) => sum + (c.zmwEquiv || 0), 0);
+          if (r.amount > totalCap) {
+            linkDisplay = `<span class="link-badge" style="background:#f59e0b20;color:var(--orange);border:1px solid #f59e0b50;">⚠️ Partial: ${linkLabels}</span>`;
+          } else {
+            linkDisplay = `<span class="link-badge">🔗 ${linkLabels}</span>`;
+          }
+        }
+
+        return `<tr style="border-bottom:1px solid var(--border);${i % 2 ? 'background:var(--surface2);' : ''}">
+          <td style="padding:9px 14px;color:var(--muted);">${i + 1}</td>
+          <td style="padding:9px 14px;">${r.date}</td>
+          <td style="padding:9px 14px;text-align:right;font-weight:800;color:var(--accent);font-size:12px;">K ${fmtI(r.amount)}</td>
+          <td style="padding:9px 14px;"><div style="display:flex;align-items:center;gap:7px;"><div style="width:26px;height:26px;background:${pCol[r.paidTo] || '#6b7280'};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;">${(r.paidTo || '?')[0]}</div><span style="font-weight:600;">${r.paidTo}</span></div></td>
+          <td style="padding:9px 14px;color:var(--muted);font-size:10px;">${r.purpose}</td>
+          <td style="padding:9px 14px;">${linkDisplay}</td>
+          <td style="padding:9px 14px;text-align:center;white-space:nowrap;">
+            <button class="action-btn" onclick="editExp(${r.id})" title="Edit">✏️</button>
+            <button class="action-btn" onclick="delRec('expenses',${r.id})" title="Delete">🗑️</button>
+          </td>
+        </tr>`}).join('')}
+        <tr style="background:var(--bg);"><td colspan="2" style="padding:11px 14px;font-weight:800;">TOTAL</td><td style="padding:11px 14px;text-align:right;font-weight:900;color:var(--orange);font-size:13px;">K ${fmtI(total)}</td><td colspan="4" style="padding:11px 14px;color:var(--muted);font-size:10px;">${rows.length} payments · ${persons.length} recipients</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>`}
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADD RECORD FORM — with linking
+    // ═══════════════════════════════════════════════════════════════════════
+    function getCfOutOptions(excludeId) {
+      return db.cashflow.filter(r => r.type === 'out').map(r => {
+        const rem = getRemaining(db, r.id);
+        return { id: r.id, sn: r.sn, notes: r.notes, zmw: r.zmwEquiv, remaining: rem, date: r.exchangeDate };
+      }).filter(r => r.remaining > 0);
+    }
+
+    function addView() {
+      const cfOuts = getCfOutOptions();
+      return `<div style="padding:24px;max-width:680px;margin:0 auto;">
+    <div style="font-size:16px;font-weight:800;margin-bottom:6px;">Add New Record</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:20px;">Choose record type. Expenses can be linked to cashflow-out records for budget tracking.</div>
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <button id="btn-cf" onclick="togForm('cf')" style="flex:1;padding:11px;border:2px solid var(--accent);background:var(--accentDk);color:var(--accent);border-radius:8px;font-size:12px;font-weight:700;">💰 Cash Flow</button>
+      <button id="btn-exp" onclick="togForm('exp')" style="flex:1;padding:11px;border:2px solid var(--border);background:var(--surface);color:var(--muted);border-radius:8px;font-size:12px;font-weight:700;">📋 Expense Only</button>
+    </div>
+    <!-- CASHFLOW FORM -->
+    <div id="form-cf" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;">
+      <div style="margin-bottom:14px;">
+        ${fld('Type', `<select id="cf-type" onchange="togCFFields()" style="${inputS}"><option value="in">↓ IN (Funding Received)</option><option value="out" selected>↑ OUT (Expense)</option></select>`)}
+      </div>
+      <div id="cf-in-fields" style="display:none;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          ${fld('Partner / Source', `<input id="cf-partner" placeholder="e.g. Mike Adenuga" style="${inputS}"/>`)}
+          ${fld('Amount (AED)', `<input id="cf-amount-in" type="number" step="0.01" placeholder="0.00" style="${inputS}"/>`)}
+          ${fld('Transfer Date', `<input id="cf-tdate" type="date" style="${inputS}"/>`)}
+        </div>
+        <div style="margin-top:14px;">${fld('Notes', `<input id="cf-notes-in" placeholder="e.g. Initial funding from partner" style="${inputS}"/>`)}</div>
+        <button onclick="saveCFIn()" style="margin-top:18px;width:100%;padding:13px;background:linear-gradient(135deg,var(--accent),#059669);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;">💰 Save Funding Record</button>
+      </div>
+      <div id="cf-out-fields">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          ${fld('Amount (AED)', `<input id="cf-amount-out" type="number" step="0.01" placeholder="0.00" style="${inputS}"/>`)}
+          ${fld('Exchange Date', `<input id="cf-edate" type="date" style="${inputS}"/>`)}
+          ${fld('Exchange Rate (ZMW/AED)', `<input id="cf-rate" type="number" step="0.01" placeholder="4.72" style="${inputS}"/>`)}
+          ${fld('ZMW Equivalent', `<input id="cf-zmw" type="number" step="0.01" placeholder="Auto-calc if rate entered" style="${inputS}"/>`)}
+          ${fld('Paid To', `<input id="cf-paidto" placeholder="e.g. Arthur, Steve, Tapison" style="${inputS}"/>`)}
+        </div>
+        <div style="margin-top:14px;">${fld('Notes / Purpose', `<input id="cf-notes-out" placeholder="What was this payment for?" style="${inputS}"/>`)}</div>
+        <div id="exp-toggle-wrap" style="margin-top:16px;padding:14px;background:var(--surface2);border-radius:10px;display:flex;align-items:center;gap:12px;">
+          <label class="toggle-switch"><input type="checkbox" id="cf-also-exp" checked onchange="document.getElementById('cf-cat-wrap').style.display=this.checked?'block':'none'"><span class="toggle-slider"></span></label>
+          <div><div style="font-size:12px;font-weight:600;">Also add to Expenses</div><div style="font-size:10px;color:var(--muted);">Auto-links this expense to the cashflow-out record</div></div>
+        </div>
+        <div id="cf-cat-wrap" style="margin-top:14px;">${fld('Category', `<select id="cf-cat" onchange="if(this.value==='__custom'){document.getElementById('cf-cat-custom').style.display='block'}else{document.getElementById('cf-cat-custom').style.display='none'}" style="${inputS}">
+          <option value="">— Select category —</option>
+          <option value="Land Lease">Land Lease</option>
+          <option value="Legal/Lawyer">Legal/Lawyer</option>
+          <option value="Labor">Labor</option>
+          <option value="Equipment/Machinery">Equipment/Machinery</option>
+          <option value="Seeds">Seeds</option>
+          <option value="Fertilizers/Manure">Fertilizers/Manure</option>
+          <option value="Tools">Tools</option>
+          <option value="Shelter">Shelter</option>
+          <option value="Survey/Measurement">Survey/Measurement</option>
+          <option value="Transportation">Transportation</option>
+          <option value="Talk Time">Talk Time</option>
+          <option value="__custom">✏️ Type custom...</option>
+        </select><input id="cf-cat-custom" placeholder="Enter custom category" style="${inputS}display:none;margin-top:6px;"/>`)}</div>
+        <button onclick="saveCFOut()" style="margin-top:18px;width:100%;padding:13px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;">📤 Save Expense Record</button>
+      </div>
+    </div>
+
+    <!-- EXPENSE ONLY FORM with cashflow-out linking -->
+    <div id="form-exp" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        ${fld('Date', `<input id="exp-date" type="date" style="${inputS}"/>`)}
+        ${fld('Amount (ZMW)', `<input id="exp-amount" type="number" step="0.01" placeholder="0.00" oninput="checkExpBudget()" style="${inputS}"/>`)}
+        ${fld('Paid To', `<input id="exp-to" placeholder="e.g. Tapison" style="${inputS}"/>`)}
+      </div>
+      <div style="margin-top:14px;">${fld('Purpose', `<input id="exp-purpose" placeholder="What is this for?" style="${inputS}"/>`)}</div>
+      <div style="margin-top:14px;">${fld('Category', `<div style="display:flex;gap:8px;"><select id="exp-cat" onchange="if(this.value==='__custom'){document.getElementById('exp-cat-custom').style.display='block'}else{document.getElementById('exp-cat-custom').style.display='none'}" style="${inputS}flex:1;">
+          <option value="">— Select category —</option>
+          <option value="Land Lease">Land Lease</option>
+          <option value="Legal/Lawyer">Legal/Lawyer</option>
+          <option value="Labor">Labor</option>
+          <option value="Equipment/Machinery">Equipment/Machinery</option>
+          <option value="Seeds">Seeds</option>
+          <option value="Fertilizers/Manure">Fertilizers/Manure</option>
+          <option value="Tools">Tools</option>
+          <option value="Shelter">Shelter</option>
+          <option value="Survey/Measurement">Survey/Measurement</option>
+          <option value="Transportation">Transportation</option>
+          <option value="Talk Time">Talk Time</option>
+          <option value="__custom">✏️ Type custom...</option>
+        </select></div><input id="exp-cat-custom" placeholder="Enter custom category" style="${inputS}display:none;margin-top:6px;"/>`)}</div>
+      <div style="margin-top:14px;">
+        ${fld('Link to Cashflow-OUT', `<select id="exp-link" onchange="checkExpBudget()" style="${inputS}">
+          <option value="">— No link (unlinked expense) —</option>
+          ${cfOuts.map(r => `<option value="${r.id}">#${r.sn} - ${(r.notes || '').slice(0, 30)} | Budget: K ${fmtI(r.zmw)} | Remaining: K ${fmtI(r.remaining)}</option>`).join('')}
+        </select>`)}
+      </div>
+      <!-- Second CF-OUT link (appears when first doesn't cover full amount) -->
+      <div id="exp-link2-wrap" style="display:none;margin-top:10px;">
+        ${fld('Co-link 2nd Cashflow-OUT (covers remainder)', `<select id="exp-link2" onchange="checkExpBudget()" style="${inputS}">
+          <option value="">— Select additional CF-OUT —</option>
+          ${cfOuts.map(r => `<option value="${r.id}">#${r.sn} - ${(r.notes || '').slice(0, 30)} | Remaining: K ${fmtI(r.remaining)}</option>`).join('')}
+        </select>`)}
+      </div>
+      <div id="exp-budget-warn" style="display:none;"></div>
+      <button onclick="saveExp()" style="margin-top:18px;width:100%;padding:13px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;">Save Expense</button>
+    </div>
+  </div>`}
+
+    function togForm(t) {
+      document.getElementById('form-cf').style.display = t === 'cf' ? 'block' : 'none';
+      document.getElementById('form-exp').style.display = t === 'exp' ? 'block' : 'none';
+      document.getElementById('btn-cf').style.borderColor = t === 'cf' ? 'var(--accent)' : 'var(--border)';
+      document.getElementById('btn-cf').style.background = t === 'cf' ? 'var(--accentDk)' : 'var(--surface)';
+      document.getElementById('btn-cf').style.color = t === 'cf' ? 'var(--accent)' : 'var(--muted)';
+      document.getElementById('btn-exp').style.borderColor = t === 'exp' ? 'var(--orange)' : 'var(--border)';
+      document.getElementById('btn-exp').style.background = t === 'exp' ? '#78350f30' : 'var(--surface)';
+      document.getElementById('btn-exp').style.color = t === 'exp' ? 'var(--orange)' : 'var(--muted)';
+    }
+    function togCFFields() {
+      const isIn = document.getElementById('cf-type').value === 'in';
+      document.getElementById('cf-in-fields').style.display = isIn ? 'block' : 'none';
+      document.getElementById('cf-out-fields').style.display = isIn ? 'none' : 'block';
+    }
+
+    // Check if expense amount exceeds linked cashflow-out budget
+    function checkExpBudget() {
+      const warn = document.getElementById('exp-budget-warn');
+      const link2Wrap = document.getElementById('exp-link2-wrap');
+      const linkId = parseInt(document.getElementById('exp-link').value);
+      const link2El = document.getElementById('exp-link2');
+      const link2Id = link2El ? parseInt(link2El.value) : 0;
+      const amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+      if (!linkId || !amount) { warn.style.display = 'none'; link2Wrap.style.display = 'none'; return }
+      const remaining = getRemaining(db, linkId);
+
+      if (amount > remaining) {
+        // Show co-link option
+        link2Wrap.style.display = 'block';
+        // Filter out the already-selected CF-OUT from second dropdown
+        const opts = getCfOutOptions().filter(r => r.id !== linkId);
+        link2El.innerHTML = '<option value="">— Select additional CF-OUT —</option>' + opts.map(r => `<option value="${r.id}" ${link2Id === r.id ? 'selected' : ''}>#${r.sn} - ${(r.notes || '').slice(0, 30)} | Remaining: K ${fmtI(r.remaining)}</option>`).join('');
+
+        const shortage = amount - remaining;
+        let msg = `<div class="warn-box">⚠️ This CF-OUT only covers <strong>K ${fmtI(remaining)}</strong> of K ${fmtI(amount)}. Shortage: <strong>K ${fmtI(shortage)}</strong>.`;
+        if (link2Id) {
+          const rem2 = getRemaining(db, link2Id);
+          const totalCovered = remaining + rem2;
+          if (totalCovered >= amount) {
+            msg = `<div style="margin-top:10px;padding:8px 12px;background:#065f4630;border:1px solid var(--accent);border-radius:8px;font-size:10px;color:var(--accent);">✓ Co-linked! CF-OUT #1 covers K ${fmtI(remaining)}, CF-OUT #2 covers K ${fmtI(amount - remaining)}. Total: K ${fmtI(amount)}</div>`;
+          } else {
+            msg += ` 2nd CF-OUT only adds K ${fmtI(rem2)}. Still short K ${fmtI(amount - totalCovered)}.`;
+          }
+        } else {
+          msg += ` Select a 2nd CF-OUT below to co-link.`;
+        }
+        if (msg.includes('warn-box')) msg += '</div>';
+        warn.innerHTML = msg;
+        warn.style.display = 'block';
+      } else {
+        link2Wrap.style.display = 'none';
+        warn.innerHTML = `<div style="margin-top:10px;padding:8px 12px;background:#065f4630;border:1px solid var(--accent);border-radius:8px;font-size:10px;color:var(--accent);">✓ Within budget. K ${fmtI(remaining - amount)} will remain after this expense.</div>`;
+        warn.style.display = 'block';
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRUD OPERATIONS
+    // ═══════════════════════════════════════════════════════════════════════
+    function saveCFIn() {
+      const db = getDB();
+      const rec = {
+        id: nextId(db.cashflow), sn: db.cashflow.length + 1, type: 'in',
+        partner: document.getElementById('cf-partner').value,
+        amountAED: parseFloat(document.getElementById('cf-amount-in').value) || 0,
+        transferDate: document.getElementById('cf-tdate').value,
+        exchangeDate: '', exchRate: 0, zmwEquiv: 0,
+        notes: document.getElementById('cf-notes-in').value
+      };
+      db.cashflow.push(rec);
+      saveDB(db); toast('✓ Funding record saved'); tab = 'cashflow'; render();
+    }
+
+    function saveCFOut() {
+      const db = getDB();
+      const a = analytics(db); // Calculate current totals
+
+      const amountAED = parseFloat(document.getElementById('cf-amount-out').value) || 0;
+
+      // Validation: Prevent negative balance
+      if (amountAED > a.balance) {
+        alert(`Transaction Blocked: This expense (AED ${fmt(amountAED)}) exceeds your available balance of AED ${fmt(a.balance)}.`);
+        return;
+      }
+
+      const rate = parseFloat(document.getElementById('cf-rate').value) || 0;
+      let zmw = parseFloat(document.getElementById('cf-zmw').value) || 0;
+      if (rate > 0 && zmw === 0 && amountAED > 0) zmw = parseFloat((amountAED * rate).toFixed(2));
+      const notes = document.getElementById('cf-notes-out').value;
+      const paidTo = document.getElementById('cf-paidto').value;
+      const eDate = document.getElementById('cf-edate').value;
+
+      const cfId = nextId(db.cashflow);
+      const rec = { id: cfId, sn: db.cashflow.length + 1, type: 'out', partner: '', amountAED, transferDate: '', exchangeDate: eDate, exchRate: rate, zmwEquiv: zmw, notes };
+      db.cashflow.push(rec);
+
+      // Auto-link expense to this cashflow-out
+      if (document.getElementById('cf-also-exp').checked) {
+        const catSel=document.getElementById('cf-cat').value;
+        const category=catSel==='__custom'?document.getElementById('cf-cat-custom').value:catSel;
+        db.expenses.push({ id: nextId(db.expenses), date: eDate || new Date().toISOString().slice(0, 10), amount: zmw, paidTo: paidTo || 'Unspecified', purpose: notes, linkedCfId: cfId, category:category||'' });
+      }
+      saveDB(db); toast('✓ Expense record saved & linked'); tab = 'cashflow'; render();
+    }
+
+    function saveExp() {
+      const db = getDB();
+      const linkVal = document.getElementById('exp-link').value;
+      const link2El = document.getElementById('exp-link2');
+      const link2Val = link2El ? link2El.value : '';
+      const linkedCfId = linkVal ? parseInt(linkVal) : null;
+      const linkedCfId2 = (link2Val && document.getElementById('exp-link2-wrap').style.display !== 'none') ? parseInt(link2Val) : null;
+      const amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+
+      // Build linked array
+      let linkedCfIds = [];
+      if (linkedCfId) linkedCfIds.push(linkedCfId);
+      if (linkedCfId2 && linkedCfId2 !== linkedCfId) linkedCfIds.push(linkedCfId2);
+
+      const catSel=document.getElementById('exp-cat').value;
+      const category=catSel==='__custom'?document.getElementById('exp-cat-custom').value:catSel;
+
+      db.expenses.push({
+        id: nextId(db.expenses),
+        date: document.getElementById('exp-date').value,
+        amount: amount,
+        paidTo: document.getElementById('exp-to').value,
+        purpose: document.getElementById('exp-purpose').value,
+        category: category||'',
+        linkedCfId: linkedCfId,
+        linkedCfIds: linkedCfIds.length ? linkedCfIds : null
+      });
+      saveDB(db); toast('✓ Expense saved' + (linkedCfIds.length ? ' & linked to ' + linkedCfIds.length + ' CF-OUT' : '')); tab = 'expenses'; render();
+    }
+
+    function delRec(table, id) {
+      if (!confirm('Delete this record?')) return;
+      const db = getDB();
+
+      // If deleting a cashflow record, scrub its ID from all expenses
+      if (table === 'cashflow') {
+        db.expenses.forEach(e => {
+          // Remove from primary link
+          if (e.linkedCfId === id) e.linkedCfId = null;
+
+          // Remove from co-linked arrays
+          if (e.linkedCfIds && e.linkedCfIds.includes(id)) {
+            e.linkedCfIds = e.linkedCfIds.filter(x => x !== id);
+            if (e.linkedCfIds.length === 0) e.linkedCfIds = null;
+          }
+        });
+      }
+
+      db[table] = db[table].filter(r => r.id !== id);
+      saveDB(db);
+      toast('Deleted');
+      render();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // EDIT MODALS — with linking support
+    // ═══════════════════════════════════════════════════════════════════════
+    function editCF(id) {
+      const r = db.cashflow.find(x => x.id === id); if (!r) return;
+      document.getElementById('modal-root').innerHTML = `<div class="modal-overlay" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+        <div style="font-size:15px;font-weight:800;">Edit Cash Flow #${r.sn || id}</div>
+        <button onclick="closeM()" style="background:none;border:none;font-size:20px;color:var(--muted);">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        ${fld('Type', `<select id="e-type" style="${inputS}"><option value="in" ${r.type === 'in' ? 'selected' : ''}>↓ IN</option><option value="out" ${r.type === 'out' ? 'selected' : ''}>↑ OUT</option></select>`)}
+        ${fld('Partner', `<input id="e-partner" value="${r.partner || ''}" style="${inputS}"/>`)}
+        ${fld('Amount (AED)', `<input id="e-amount" type="number" step="0.01" value="${r.amountAED || ''}" style="${inputS}"/>`)}
+        ${fld('Transfer Date', `<input id="e-tdate" type="date" value="${r.transferDate || ''}" style="${inputS}"/>`)}
+        ${fld('Exchange Date', `<input id="e-edate" type="date" value="${r.exchangeDate || ''}" style="${inputS}"/>`)}
+        ${fld('Exchange Rate', `<input id="e-rate" type="number" step="0.01" value="${r.exchRate || ''}" style="${inputS}"/>`)}
+        ${fld('ZMW', `<input id="e-zmw" type="number" step="0.01" value="${r.zmwEquiv || ''}" style="${inputS}"/>`)}
+      </div>
+      <div style="margin-top:14px;">${fld('Notes', `<input id="e-notes" value="${r.notes || ''}" style="${inputS}"/>`)}</div>
+      ${r.type === 'out' ? `<div style="margin-top:14px;padding:12px;background:var(--surface2);border-radius:8px;font-size:10px;color:var(--muted);">🔗 ${db.expenses.filter(e => e.linkedCfId === r.id).length} expense(s) linked to this record (K ${fmtI(getLinkedTotal(db, r.id))} of K ${fmtI(r.zmwEquiv)})</div>` : ''}
+      <button onclick="updateCF(${id})" style="margin-top:18px;width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;">Save Changes</button>
+    </div>
+  </div>`}
+
+    function editExp(id) {
+      const r = db.expenses.find(x => x.id === id); if (!r) return;
+      const allOuts = db.cashflow.filter(c => c.type === 'out');
+
+      let link1 = ''; let link2 = '';
+      if (r.linkedCfIds && r.linkedCfIds.length > 0) {
+        link1 = r.linkedCfIds[0];
+        if (r.linkedCfIds.length > 1) link2 = r.linkedCfIds[1];
+      } else if (r.linkedCfId) {
+        link1 = r.linkedCfId;
+      }
+
+      // Custom option generator for edits: 
+      // Hides empty budgets, but ALWAYS shows the currently linked ones so they don't disappear
+      const getOptions = (selectedId) => {
+        return allOuts.map(c => {
+          const rem = getRemaining(db, c.id);
+          if (c.id === selectedId || rem > 0) {
+            return `<option value="${c.id}" ${selectedId === c.id ? 'selected' : ''}>#${c.sn} - ${(c.notes || '').slice(0, 30)} | K ${fmtI(c.zmwEquiv)} (Rem: K ${fmtI(rem)})</option>`;
+          }
+          return '';
+        }).join('');
+      };
+
+      document.getElementById('modal-root').innerHTML = `<div class="modal-overlay" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+        <div style="font-size:15px;font-weight:800;">Edit Expense</div>
+        <button onclick="closeM()" style="background:none;border:none;font-size:20px;color:var(--muted);">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        ${fld('Date', `<input id="ee-date" type="date" value="${r.date || ''}" style="${inputS}"/>`)}
+        ${fld('Amount (ZMW)', `<input id="ee-amount" type="number" step="0.01" value="${r.amount || ''}" oninput="checkEditExpBudget()" style="${inputS}"/>`)}
+        ${fld('Paid To', `<input id="ee-to" value="${r.paidTo || ''}" style="${inputS}"/>`)}
+      </div>
+      <div style="margin-top:14px;">${fld('Purpose', `<input id="ee-purpose" value="${r.purpose || ''}" style="${inputS}"/>`)}</div>
+      <div style="margin-top:14px;">${fld('Category', `<select id="ee-cat" onchange="if(this.value==='__custom'){document.getElementById('ee-cat-custom').style.display='block'}else{document.getElementById('ee-cat-custom').style.display='none'}" style="${inputS}">
+          <option value="">— Select category —</option>
+          <option value="Land Lease" ${r.category==='Land Lease'?'selected':''}>Land Lease</option>
+          <option value="Legal/Lawyer" ${r.category==='Legal/Lawyer'?'selected':''}>Legal/Lawyer</option>
+          <option value="Labor" ${r.category==='Labor'?'selected':''}>Labor</option>
+          <option value="Equipment/Machinery" ${r.category==='Equipment/Machinery'?'selected':''}>Equipment/Machinery</option>
+          <option value="Seeds" ${r.category==='Seeds'?'selected':''}>Seeds</option>
+          <option value="Fertilizers/Manure" ${r.category==='Fertilizers/Manure'?'selected':''}>Fertilizers/Manure</option>
+          <option value="Tools" ${r.category==='Tools'?'selected':''}>Tools</option>
+          <option value="Shelter" ${r.category==='Shelter'?'selected':''}>Shelter</option>
+          <option value="Survey/Measurement" ${r.category==='Survey/Measurement'?'selected':''}>Survey/Measurement</option>
+          <option value="Transportation" ${r.category==='Transportation'?'selected':''}>Transportation</option>
+          <option value="Talk Time" ${r.category==='Talk Time'?'selected':''}>Talk Time</option>
+          <option value="__custom" ${r.category&&!['Land Lease','Legal/Lawyer','Labor','Equipment/Machinery','Seeds','Fertilizers/Manure','Tools','Shelter','Survey/Measurement','Transportation','Talk Time',''].includes(r.category)?'selected':''}>✏️ Type custom...</option>
+        </select><input id="ee-cat-custom" value="${r.category&&!['Land Lease','Legal/Lawyer','Labor','Equipment/Machinery','Seeds','Fertilizers/Manure','Tools','Shelter','Survey/Measurement','Transportation','Talk Time',''].includes(r.category)?r.category:''}" placeholder="Enter custom category" style="${inputS}display:${r.category&&!['Land Lease','Legal/Lawyer','Labor','Equipment/Machinery','Seeds','Fertilizers/Manure','Tools','Shelter','Survey/Measurement','Transportation','Talk Time',''].includes(r.category)?'block':'none'};margin-top:6px;"/>`)}</div>
+      <div style="margin-top:14px;">
+        ${fld('Link to Cashflow-OUT', `<select id="ee-link" onchange="checkEditExpBudget()" style="${inputS}">
+          <option value="">— Unlinked —</option>
+          ${getOptions(link1)}
+        </select>`)}
+      </div>
+      <div id="ee-link2-wrap" style="display:${link2 ? 'block' : 'none'};margin-top:10px;">
+        ${fld('Co-link 2nd Cashflow-OUT', `<select id="ee-link2" onchange="checkEditExpBudget()" style="${inputS}">
+          <option value="">— Select additional CF-OUT —</option>
+          ${getOptions(link2)}
+        </select>`)}
+      </div>
+      <div id="ee-budget-warn" style="display:none;margin-top:10px;"></div>
+      <button onclick="updateExp(${id})" style="margin-top:18px;width:100%;padding:12px;background:var(--orange);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;">Save Changes</button>
+    </div>
+  </div>`;
+
+      setTimeout(() => checkEditExpBudget(), 50);
+    }
+    // Validates budget capacity during edits
+    function checkEditExpBudget() {
+      const warn = document.getElementById('ee-budget-warn');
+      const link2Wrap = document.getElementById('ee-link2-wrap');
+      const linkId = parseInt(document.getElementById('ee-link').value);
+      const link2El = document.getElementById('ee-link2');
+      const link2Id = link2El ? parseInt(link2El.value) : 0;
+      const amount = parseFloat(document.getElementById('ee-amount').value) || 0;
+
+      if (!linkId || !amount) { warn.style.display = 'none'; link2Wrap.style.display = 'none'; return; }
+
+      const cf1 = db.cashflow.find(c => c.id === linkId);
+      let cf1Cap = cf1 ? cf1.zmwEquiv : 0;
+
+      if (amount > cf1Cap) {
+        link2Wrap.style.display = 'block';
+        const shortage = amount - cf1Cap;
+        let msg = `<div class="warn-box">⚠️ CF-OUT #1 max capacity is <strong>K ${fmtI(cf1Cap)}</strong>. Shortage: <strong>K ${fmtI(shortage)}</strong>.`;
+
+        if (link2Id) {
+          const cf2 = db.cashflow.find(c => c.id === link2Id);
+          const cf2Cap = cf2 ? cf2.zmwEquiv : 0;
+          const totalCap = cf1Cap + cf2Cap;
+          if (totalCap >= amount) {
+            msg = `<div style="margin-top:10px;padding:8px 12px;background:#065f4630;border:1px solid var(--accent);border-radius:8px;font-size:10px;color:var(--accent);">✓ Co-linked! Combined capacity: K ${fmtI(totalCap)} covers K ${fmtI(amount)}.</div>`;
+          } else {
+            msg += ` 2nd CF-OUT adds K ${fmtI(cf2Cap)}. Still short K ${fmtI(amount - totalCap)}.`;
+          }
+        } else {
+          msg += ` Select a 2nd CF-OUT below to co-link.`;
+        }
+        if (msg.includes('warn-box')) msg += '</div>';
+        warn.innerHTML = msg;
+        warn.style.display = 'block';
+      } else {
+        link2Wrap.style.display = 'none';
+        if (link2El) link2El.value = '';
+        warn.innerHTML = `<div style="margin-top:10px;padding:8px 12px;background:#065f4630;border:1px solid var(--accent);border-radius:8px;font-size:10px;color:var(--accent);">✓ Fits within CF-OUT #1 total capacity.</div>`;
+        warn.style.display = 'block';
+      }
+    }
+
+    function updateCF(id) {
+      const db = getDB(); const r = db.cashflow.find(x => x.id === id); if (!r) return;
+
+      const newType = document.getElementById('e-type').value;
+      const newAmount = parseFloat(document.getElementById('e-amount').value) || 0;
+
+      // Validation: Prevent negative balance on edit
+      if (newType === 'out') {
+        const a = analytics(db);
+        // Calculate what the balance would be if we remove this transaction's old value
+        let effectiveBalance = a.balance;
+        if (r.type === 'out') effectiveBalance += (r.amountAED || 0);
+        else effectiveBalance -= (r.amountAED || 0); // If they are changing an IN to an OUT
+
+        if (newAmount > effectiveBalance) {
+          alert(`Update Blocked: Modifying this expense to AED ${fmt(newAmount)} exceeds the available balance of AED ${fmt(effectiveBalance)}.`);
+          return;
+        }
+      }
+
+      r.type = newType; r.partner = document.getElementById('e-partner').value;
+      r.amountAED = newAmount; r.transferDate = document.getElementById('e-tdate').value;
+      r.exchangeDate = document.getElementById('e-edate').value; r.exchRate = parseFloat(document.getElementById('e-rate').value) || 0;
+      r.zmwEquiv = parseFloat(document.getElementById('e-zmw').value) || 0; r.notes = document.getElementById('e-notes').value;
+      if (r.exchRate > 0 && r.zmwEquiv === 0 && r.amountAED > 0) r.zmwEquiv = parseFloat((r.amountAED * r.exchRate).toFixed(2));
+      saveDB(db); toast('✓ Updated'); render()
+    }
+
+    function updateExp(id) {
+      const db = getDB(); const r = db.expenses.find(x => x.id === id); if (!r) return;
+      r.date = document.getElementById('ee-date').value;
+      r.amount = parseFloat(document.getElementById('ee-amount').value) || 0;
+      r.paidTo = document.getElementById('ee-to').value;
+      r.purpose = document.getElementById('ee-purpose').value;
+      const catSel=document.getElementById('ee-cat').value;
+      r.category=catSel==='__custom'?document.getElementById('ee-cat-custom').value:catSel;
+
+      const linkVal = document.getElementById('ee-link').value;
+      const link2El = document.getElementById('ee-link2');
+      const link2Val = link2El ? link2El.value : '';
+
+      const linkedCfId = linkVal ? parseInt(linkVal) : null;
+      const linkedCfId2 = (link2Val && document.getElementById('ee-link2-wrap').style.display !== 'none') ? parseInt(link2Val) : null;
+
+      let linkedCfIds = [];
+      if (linkedCfId) linkedCfIds.push(linkedCfId);
+      if (linkedCfId2 && linkedCfId2 !== linkedCfId) linkedCfIds.push(linkedCfId2);
+
+      r.linkedCfId = linkedCfId;
+      r.linkedCfIds = linkedCfIds.length ? linkedCfIds : null;
+
+      saveDB(db); toast('✓ Updated'); render()
+    }
+
+    function closeModal(e) { if (e.target.classList.contains('modal-overlay')) closeM() }
+    function closeM() { document.getElementById('modal-root').innerHTML = '' }
+    function toast(m) { const t = document.createElement('div'); t.textContent = m; t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:10px 22px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;animation:slideIn 0.3s;box-shadow:0 6px 20px rgba(16,185,129,0.3);'; document.body.appendChild(t); setTimeout(() => t.remove(), 2500) }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // REPORTS VIEW
+    // ═══════════════════════════════════════════════════════════════════════
+    let pdfSections = { summary: true, cfIn: true, cfOut: true, expenses: true };
+
+    function reportsView() {
+      const persons = [...new Set(db.expenses.map(r => r.paidTo))].sort();
+      return `<div style="padding:24px;max-width:1000px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div><div style="font-size:16px;font-weight:800;">Reports & Export</div><div style="font-size:11px;color:var(--muted);">Filter data, select sections, then download</div></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="generateExcel()" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">📊 Excel</button>
+        <button onclick="generatePDF()" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;">📄 PDF</button>
+      </div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:12px;">🔍 Filter Data</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+        ${fld('From Date', `<input id="f-from" type="date" value="${filters.from}" onchange="applyFilters()" style="${inputS}"/>`)}
+        ${fld('To Date', `<input id="f-to" type="date" value="${filters.to}" onchange="applyFilters()" style="${inputS}"/>`)}
+        ${fld('Recipient', `<select id="f-person" onchange="applyFilters()" style="${inputS}"><option value="">All Recipients</option>${persons.map(p => `<option value="${p}" ${filters.person === p ? 'selected' : ''}>${p}</option>`).join('')}</select>`)}
+        ${fld('Type', `<select id="f-type" onchange="applyFilters()" style="${inputS}"><option value="all">All Types</option><option value="in" ${filters.type === 'in' ? 'selected' : ''}>IN only</option><option value="out" ${filters.type === 'out' ? 'selected' : ''}>OUT only</option></select>`)}
+      </div>
+      <div style="margin-top:12px;"><button onclick="clearFilters()" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border);padding:7px 16px;border-radius:6px;font-size:11px;font-weight:600;">Clear Filters</button></div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:12px;">📑 Select PDF Sections</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+        ${sectionCheck('summary', 'Executive Summary', '📋')}
+        ${sectionCheck('cfIn', 'Cash Flow — IN', '💰')}
+        ${sectionCheck('cfOut', 'Cash Flow — OUT', '📤')}
+        ${sectionCheck('expenses', 'Expenses', '📋')}
+      </div>
+    </div>
+    ${renderFilteredPreview()}
+  </div>`}
+
+    function sectionCheck(key, label, icon) {
+      return `<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border-radius:8px;cursor:pointer;border:1px solid ${pdfSections[key] ? 'var(--accent)' : 'var(--border)'};">
+    <input type="checkbox" ${pdfSections[key] ? 'checked' : ''} onchange="pdfSections.${key}=this.checked;render()" style="accent-color:var(--accent);width:16px;height:16px;"/>
+    <div><div style="font-size:11px;font-weight:600;">${icon} ${label}</div></div>
+  </label>`}
+
+    function applyFilters() { filters.from = document.getElementById('f-from').value; filters.to = document.getElementById('f-to').value; filters.person = document.getElementById('f-person').value; filters.type = document.getElementById('f-type').value; render() }
+    function clearFilters() { filters = { from: '', to: '', person: '', type: 'all' }; render() }
+
+    function renderFilteredPreview() {
+      const a = analytics(db, filters);
+      return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;">
+    <div style="font-size:12px;font-weight:700;margin-bottom:14px;">📊 Filtered Summary</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+      <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Cash In</div><div style="font-size:16px;font-weight:800;color:var(--accent);margin-top:4px;">AED ${fmt(a.totalIn)}</div></div>
+      <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Cash Out</div><div style="font-size:16px;font-weight:800;color:var(--red);margin-top:4px;">AED ${fmt(a.totalOut)}</div></div>
+      <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Balance</div><div style="font-size:16px;font-weight:800;color:${a.balance >= 0 ? 'var(--accent)' : 'var(--red)'};margin-top:4px;">AED ${fmt(a.balance)}</div></div>
+      <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Expenses</div><div style="font-size:16px;font-weight:800;color:var(--orange);margin-top:4px;">K ${fmtI(a.totalExp)}</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);">${a.txCount} cashflow · ${a.expCount} expenses (${a.linkedExp.length} linked, ${a.unlinkedExp.length} unlinked)</div>
+  </div>`}
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // EXCEL GENERATION
+    // ═══════════════════════════════════════════════════════════════════════
+    function generateExcel(){
+      const a=analytics(db,filters);
+      const wb=XLSX.utils.book_new();
+
+      // Sheet 1: Cash Flow IN
+      if(pdfSections.cfIn){
+        const inRows=a.filteredCF.filter(r=>r.type==='in').map((r,i)=>({
+          'SN':r.sn||i+1,'Partner':r.partner||'','Amount (AED)':r.amountAED,'Transfer Date':r.transferDate||'','Notes':r.notes||''
+        }));
+        const ws1=XLSX.utils.json_to_sheet(inRows);
+        XLSX.utils.book_append_sheet(wb,ws1,'CF-IN');
+      }
+
+      // Sheet 2: Cash Flow OUT
+      if(pdfSections.cfOut){
+        const outRows=a.filteredCF.filter(r=>r.type==='out').map((r,i)=>({
+          'SN':r.sn||i+1,'Amount (AED)':r.amountAED,'Exchange Date':r.exchangeDate||'','Rate':r.exchRate||'','ZMW':r.zmwEquiv||'','Used':getLinkedTotal(db,r.id),'Notes':r.notes||''
+        }));
+        const ws2=XLSX.utils.json_to_sheet(outRows);
+        XLSX.utils.book_append_sheet(wb,ws2,'CF-OUT');
+      }
+
+      // Sheet 3: Expenses
+      if(pdfSections.expenses){
+        const expRows=a.filteredExp.map((r,i)=>{
+          const cfIds=r.linkedCfIds||(r.linkedCfId?[r.linkedCfId]:[]);
+          const links=cfIds.map(id=>{const c=db.cashflow.find(x=>x.id===id);return c?'#'+c.sn:''}).filter(Boolean).join(', ');
+          return{'#':i+1,'Date':r.date,'Amount (ZMW)':r.amount,'Paid To':r.paidTo,'Purpose':r.purpose,'Category':r.category||'','Linked CF':links||'Unlinked'};
+        });
+        const ws3=XLSX.utils.json_to_sheet(expRows);
+        XLSX.utils.book_append_sheet(wb,ws3,'Expenses');
+      }
+
+      // Sheet 4: Summary
+      if(pdfSections.summary){
+        const sumData=[
+          {'Metric':'Total Funded (AED)','Value':a.totalIn},
+          {'Metric':'Total Spent (AED)','Value':a.totalOut},
+          {'Metric':'Balance (AED)','Value':a.balance},
+          {'Metric':'Total Expenses (ZMW)','Value':a.totalExp},
+          {'Metric':'Avg Exchange Rate','Value':a.avgRate.toFixed(2)},
+          {'Metric':'Linked Expenses','Value':a.linkedExp.length+'/'+a.expCount},
+          {'Metric':'Utilization %','Value':(a.totalIn>0?((a.totalOut/a.totalIn)*100).toFixed(1):'0')+'%'},
+        ];
+        const ws4=XLSX.utils.json_to_sheet(sumData);
+        XLSX.utils.book_append_sheet(wb,ws4,'Summary');
+      }
+
+      XLSX.writeFile(wb,'Farm_Report_'+new Date().toISOString().slice(0,10)+'.xlsx');
+      toast('📊 Excel Downloaded!');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PDF GENERATION
+    // ═══════════════════════════════════════════════════════════════════════
+    function generatePDF(){
+  const a=analytics(db,filters);
+  const rawUtil = a.totalIn > 0 ? (a.totalOut / a.totalIn) * 100 : 0;
+  const util = (rawUtil > 99.8 && rawUtil < 100) ? '99.99' : rawUtil.toFixed(1);
+  const today=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const fStr=filters.from||filters.to||filters.person||(filters.type!=='all')?`${filters.from||'start'} to ${filters.to||'now'}`:'All records';
+
+  // Table Flow CSS
+  let h='<div style="font-family:Arial,sans-serif;color:#111;background:#fff;width:100%;">';
+  h+='<style>table { page-break-inside: auto; } tr { page-break-inside: avoid; page-break-after: auto; } thead { display: table-header-group; }</style>';
+  
+  h+='<div style="background:#131A22;padding:16px 22px;border-bottom:3px solid #10b981;">';
+  h+='<div style="font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;">Financial Report</div>';
+  h+='<div style="font-size:18px;font-weight:900;color:#fff;margin-top:2px;">Crops Farming Cashflow</div>';
+  h+='<div style="font-size:9px;color:#aaa;margin-top:3px;">Generated: <span style="color:#10b981;">'+today+'</span> | '+fStr+'</div>';
+  h+='</div><div style="padding:14px 22px;">';
+
+  if(pdfSections.summary){
+    h+='<div style="font-size:12px;font-weight:800;margin:12px 0 6px;border-bottom:2px solid #e5e7eb;padding-bottom:4px;">Executive Summary</div>';
+    
+    h+='<table style="width:100%;border-collapse:collapse;margin-bottom:10px;"><tr>';
+    h+='<td style="padding:8px;text-align:center;background:#f0fdf4;border:1px solid #e5e7eb;width:25%;"><div style="font-size:7px;color:#666;font-weight:700;">FUNDED</div><div style="font-size:12px;font-weight:900;color:#059669;margin-top:2px;">AED '+fmt(a.totalIn)+'</div></td>';
+    h+='<td style="padding:8px;text-align:center;background:#fff7ed;border:1px solid #e5e7eb;width:25%;"><div style="font-size:7px;color:#666;font-weight:700;">SPENT</div><div style="font-size:12px;font-weight:900;color:#d97706;margin-top:2px;">AED '+fmt(a.totalOut)+'</div></td>';
+    h+='<td style="padding:8px;text-align:center;background:'+(a.balance>=0?'#f0fdf4':'#fef2f2')+';border:1px solid #e5e7eb;width:25%;"><div style="font-size:7px;color:#666;font-weight:700;">BALANCE</div><div style="font-size:12px;font-weight:900;color:'+(a.balance>=0?'#059669':'#dc2626')+';margin-top:2px;">AED '+fmt(a.balance)+'</div></td>';
+    h+='<td style="padding:8px;text-align:center;background:#eff6ff;border:1px solid #e5e7eb;width:25%;"><div style="font-size:7px;color:#666;font-weight:700;">EXPENSES</div><div style="font-size:12px;font-weight:900;color:#2563eb;margin-top:2px;">K '+fmtI(a.totalExp)+'</div></td>';
+    h+='</tr></table>';
+    
+    h+='<table style="width:100%;border-collapse:collapse;margin-bottom:12px;"><tr>';
+    h+='<td style="padding:7px;background:#f9fafb;border:1px solid #e5e7eb;"><div style="font-size:7px;color:#666;font-weight:700;">UTILIZATION</div><div style="font-size:13px;font-weight:900;">'+util+'%</div></td>';
+    h+='<td style="padding:7px;background:#f9fafb;border:1px solid #e5e7eb;"><div style="font-size:7px;color:#666;font-weight:700;">AVG RATE</div><div style="font-size:13px;font-weight:900;">'+a.avgRate.toFixed(2)+'</div></td>';
+    h+='<td style="padding:7px;background:#f9fafb;border:1px solid #e5e7eb;"><div style="font-size:7px;color:#666;font-weight:700;">LINKED</div><div style="font-size:13px;font-weight:900;">'+a.linkedExp.length+'/'+a.expCount+'</div></td>';
+    h+='</tr></table>';
+
+    const partnerTotals = {};
+    a.filteredCF.filter(r => r.type === 'in').forEach(r => {
+      const p = r.partner || 'Unknown';
+      partnerTotals[p] = (partnerTotals[p] || 0) + r.amountAED;
+    });
+    const partnerShares = Object.entries(partnerTotals).map(([p, amt]) => {
+      return { partner: p, amount: amt, pct: a.totalIn > 0 ? ((amt / a.totalIn) * 100).toFixed(1) : 0 };
+    }).sort((x, y) => y.amount - x.amount);
+
+    if(partnerShares.length > 0) {
+      h+='<div style="font-size:9px;font-weight:800;color:#666;margin:0 0 4px;text-transform:uppercase;">Partner Share Summary</div>';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:10px;">';
+      h+='<thead><tr style="background:#f3f4f6;color:#444;border:1px solid #e5e7eb;">';
+      h+='<th style="padding:5px;text-align:left;width:50%;">Partner Name</th>';
+      h+='<th style="padding:5px;text-align:right;width:30%;">Total Contributed (AED)</th>';
+      h+='<th style="padding:5px;text-align:right;width:20%;">Equity / Share</th>';
+      h+='</tr></thead><tbody>';
+      
+      partnerShares.forEach((ps) => {
+        h+='<tr style="border-bottom:1px solid #e5e7eb;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">';
+        h+='<td style="padding:5px;font-weight:700;">'+ps.partner+'</td>';
+        h+='<td style="padding:5px;text-align:right;color:#059669;font-weight:700;">'+fmt(ps.amount)+'</td>';
+        h+='<td style="padding:5px;text-align:right;font-weight:900;">'+ps.pct+'%</td>';
+        h+='</tr>';
+      });
+      h+='</tbody></table>';
+    }
+  }
+
+  if(pdfSections.cfIn){
+    const rows=a.filteredCF.filter(r=>r.type==='in');
+    h+='<div style="font-size:12px;font-weight:800;margin:14px 0 6px;border-bottom:2px solid #e5e7eb;padding-bottom:4px;">Cash Flow — Funding (IN)</div>';
+    
+    h+='<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr style="background:#059669;color:#fff;">';
+    h+='<th style="padding:5px;text-align:center;width:8%;">SN</th>';
+    h+='<th style="padding:5px;text-align:left;">Partner</th>';
+    h+='<th style="padding:5px;text-align:right;width:20%;">AED</th>';
+    h+='<th style="padding:5px;text-align:center;width:20%;">Transfer Date</th>';
+    h+='<th style="padding:5px;text-align:left;width:30%;">Notes</th></tr></thead><tbody>';
+    
+    rows.forEach((r,i)=>{
+      h+='<tr style="border-bottom:1px solid #f3f4f6;'+(i%2?'background:#fafafa;':'')+'">';
+      h+='<td style="padding:4px 5px;text-align:center;">'+(r.sn||i+1)+'</td>';
+      h+='<td style="padding:4px 5px;text-align:left;font-weight:600;">'+(r.partner||'-')+'</td>';
+      h+='<td style="padding:4px 5px;text-align:right;font-weight:700;color:#059669;">'+fmt(r.amountAED)+'</td>';
+      h+='<td style="padding:4px 5px;text-align:center;color:#666;">'+(r.transferDate||'-')+'</td>';
+      h+='<td style="padding:4px 5px;text-align:left;color:#555;">'+(r.notes||'-')+'</td></tr>';
+    });
+    
+    // Totals for CF In
+    if(rows.length) {
+      const totalInAED = rows.reduce((s,r) => s + (r.amountAED || 0), 0);
+      h+='<tr style="background:#e5e7eb;font-weight:800;border-top:2px solid #d1d5db;">';
+      h+='<td colspan="2" style="padding:6px 5px;text-align:right;color:#374151;">TOTAL FUNDING:</td>';
+      h+='<td style="padding:6px 5px;text-align:right;color:#059669;font-size:10px;">AED '+fmt(totalInAED)+'</td>';
+      h+='<td colspan="2"></td></tr>';
+    } else {
+      h+='<tr><td colspan="5" style="padding:8px;text-align:center;color:#888;">No records</td></tr>';
+    }
+    h+='</tbody></table>';
+  }
+
+  if(pdfSections.cfOut){
+    const rows=a.filteredCF.filter(r=>r.type==='out');
+    h+='<div style="font-size:12px;font-weight:800;margin:14px 0 6px;border-bottom:2px solid #e5e7eb;padding-bottom:4px;">Cash Flow — Expenditures (OUT)</div>';
+    
+    // Adjusted column widths to fit the new "Remaining" column (total 100%)
+    h+='<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr style="background:#dc2626;color:#fff;">';
+    h+='<th style="padding:5px;text-align:center;width:5%;">SN</th>';
+    h+='<th style="padding:5px;text-align:right;width:12%;">AED</th>';
+    h+='<th style="padding:5px;text-align:center;width:10%;">Date</th>';
+    h+='<th style="padding:5px;text-align:center;width:8%;">Rate</th>';
+    h+='<th style="padding:5px;text-align:right;width:13%;">ZMW Budget</th>';
+    h+='<th style="padding:5px;text-align:right;width:13%;">Used</th>';
+    h+='<th style="padding:5px;text-align:right;width:13%;">Remaining</th>';
+    h+='<th style="padding:5px;text-align:left;width:26%;">Notes</th></tr></thead><tbody>';
+    
+    let totalZmwEquiv = 0;
+    let totalUsed = 0;
+    let totalRemaining = 0; // Track the total remaining balance
+
+    rows.forEach((r,i)=>{
+      const used=getLinkedTotal(db,r.id);
+      const remaining = (r.zmwEquiv || 0) - used; // Calculate pending balance
+      
+      totalZmwEquiv += (r.zmwEquiv || 0);
+      totalUsed += used;
+      totalRemaining += remaining;
+
+      h+='<tr style="border-bottom:1px solid #f3f4f6;'+(i%2?'background:#fafafa;':'')+'">';
+      h+='<td style="padding:4px 5px;text-align:center;">'+(r.sn||i+1)+'</td>';
+      h+='<td style="padding:4px 5px;text-align:right;font-weight:700;">'+fmt(r.amountAED)+'</td>';
+      h+='<td style="padding:4px 5px;text-align:center;color:#666;">'+(r.exchangeDate||'-')+'</td>';
+      h+='<td style="padding:4px 5px;text-align:center;color:#7c3aed;font-weight:600;">'+(r.exchRate||'-')+'</td>';
+      h+='<td style="padding:4px 5px;text-align:right;font-weight:700;color:#d97706;">'+(r.zmwEquiv?fmtI(r.zmwEquiv):'-')+'</td>';
+      h+='<td style="padding:4px 5px;text-align:right;font-weight:700;color:'+(used>(r.zmwEquiv||0)?'#dc2626':'#059669')+';">'+fmtI(used)+'</td>';
+      // Add the remaining column (red if negative, otherwise standard gray)
+      h+='<td style="padding:4px 5px;text-align:right;font-weight:700;color:'+(remaining<0?'#dc2626':'#6b7280')+';">'+fmtI(remaining)+'</td>';
+      h+='<td style="padding:4px 5px;text-align:left;color:#555;">'+(r.notes||'-')+'</td></tr>';
+    });
+
+    // Totals for CF Out
+    if(rows.length) {
+      const totalOutAED = rows.reduce((s,r) => s + (r.amountAED || 0), 0);
+      h+='<tr style="background:#e5e7eb;font-weight:800;border-top:2px solid #d1d5db;">';
+      h+='<td style="padding:6px 5px;text-align:center;color:#374151;">TOT:</td>';
+      h+='<td style="padding:6px 5px;text-align:right;color:#dc2626;font-size:10px;">'+fmt(totalOutAED)+'</td>';
+      h+='<td colspan="2"></td>';
+      h+='<td style="padding:6px 5px;text-align:right;color:#d97706;font-size:10px;">'+fmtI(totalZmwEquiv)+'</td>';
+      h+='<td style="padding:6px 5px;text-align:right;color:#059669;font-size:10px;">'+fmtI(totalUsed)+'</td>';
+      // Add the total remaining amount to the footer
+      h+='<td style="padding:6px 5px;text-align:right;color:'+(totalRemaining<0?'#dc2626':'#374151')+';font-size:10px;">'+fmtI(totalRemaining)+'</td>';
+      h+='<td></td></tr>';
+    } else {
+      h+='<tr><td colspan="8" style="padding:8px;text-align:center;color:#888;">No records</td></tr>';
+    }
+    h+='</tbody></table>';
+  }
+
+  if(pdfSections.expenses){
+    h+='<div style="font-size:12px;font-weight:800;margin:14px 0 6px;border-bottom:2px solid #e5e7eb;padding-bottom:4px;">Expense Detail</div>';
+    
+    h+='<table style="width:100%;border-collapse:collapse;font-size:9px;"><thead><tr style="background:#131A22;color:#fff;">';
+    h+='<th style="padding:5px;text-align:center;width:6%;">#</th>';
+    h+='<th style="padding:5px;text-align:center;width:14%;">Date</th>';
+    h+='<th style="padding:5px;text-align:right;width:20%;">Amount</th>';
+    h+='<th style="padding:5px;text-align:left;width:15%;">Paid To</th>';
+    h+='<th style="padding:5px;text-align:left;width:25%;">Purpose</th>';
+    h+='<th style="padding:5px;text-align:center;width:20%;">Linked CF</th></tr></thead><tbody>';
+    
+    a.filteredExp.forEach((r,i)=>{
+      const cfIds = r.linkedCfIds || (r.linkedCfId ? [r.linkedCfId] : []);
+      const linkLabels = cfIds.map(id => {
+        const c = db.cashflow.find(x => x.id === id);
+        return c ? '#' + c.sn : '';
+      }).filter(Boolean).join(', ');
+
+      h+='<tr style="border-bottom:1px solid #f3f4f6;'+(i%2?'background:#fafafa;':'')+'">';
+      h+='<td style="padding:4px 5px;text-align:center;">'+(i+1)+'</td>';
+      h+='<td style="padding:4px 5px;text-align:center;">'+r.date+'</td>';
+      h+='<td style="padding:4px 5px;text-align:right;font-weight:700;color:#059669;">K '+fmtI(r.amount)+'</td>';
+      h+='<td style="padding:4px 5px;text-align:left;font-weight:600;">'+r.paidTo+'</td>';
+      h+='<td style="padding:4px 5px;text-align:left;color:#555;">'+r.purpose+'</td>';
+      h+='<td style="padding:4px 5px;text-align:center;color:#666;">'+(linkLabels ? linkLabels : '—')+'</td></tr>';
+    });
+    
+    // Totals for Expenses
+    if(a.filteredExp.length) {
+      const totalExpAmount = a.filteredExp.reduce((s,r) => s + (r.amount || 0), 0);
+      h+='<tr style="background:#e5e7eb;font-weight:800;border-top:2px solid #d1d5db;">';
+      h+='<td colspan="2" style="padding:6px 5px;text-align:right;color:#374151;">TOTAL EXPENSES:</td>';
+      h+='<td style="padding:6px 5px;text-align:right;color:#059669;font-size:10px;">K '+fmtI(totalExpAmount)+'</td>';
+      h+='<td colspan="3"></td></tr>';
+    } else {
+      h+='<tr><td colspan="6" style="padding:8px;text-align:center;color:#888;">No records</td></tr>';
+    }
+    h+='</tbody></table>';
+  }
+
+  // NOTE: The HTML footer div has been completely removed here.
+  h+='</div></div>';
+
+  toast('⏳ Generating PDF...');
+
+  setTimeout(() => {
+    const opt = {
+      margin: [10, 6, 15, 6], // Increased bottom margin to 15mm to make room for the pinned footer
+      filename: 'Farm_Report_' + new Date().toISOString().slice(0, 10) + '.pdf',
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['tr'] }
+    };
+
+    html2pdf().set(opt).from(h).toPdf().get('pdf').then(function (pdf) {
+      const totalPages = pdf.internal.getNumberOfPages();
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        
+        // --- DRAW CUSTOM PINNED FOOTER ---
+        const footerHeight = 10; 
+        const footerY = pageHeight - footerHeight;
+
+        // 1. Draw Background Rectangle (#131A22)
+        pdf.setFillColor(19, 26, 34);
+        pdf.rect(0, footerY, pageWidth, footerHeight, 'F');
+        
+        // 2. Draw Top Accent Line (#10b981)
+        pdf.setDrawColor(16, 185, 129);
+        pdf.setLineWidth(0.5);
+        pdf.line(0, footerY, pageWidth, footerY);
+
+        // 3. Add Left Text: "Crops Farming - Confidential"
+        pdf.setFontSize(8);
+        pdf.setTextColor(136, 136, 136); // #888
+        pdf.text('Crops Farming - ', 10, footerY + 6);
+        
+        const textWidth = pdf.getTextWidth('Crops Farming - ');
+        pdf.setTextColor(16, 185, 129); // #10b981
+        pdf.text('Confidential', 10 + textWidth, footerY + 6);
+
+        // 4. Add Right Text: Date & Pagination
+        pdf.setTextColor(136, 136, 136); // #888
+        const rightText = today + '   |   Page ' + i + ' of ' + totalPages;
+        pdf.text(rightText, pageWidth - 10, footerY + 6, { align: 'right' });
+      }
+    }).save().then(() => {
+      toast('📄 PDF Downloaded!');
+    }).catch(e => {
+      console.error(e);
+      toast('PDF failed - check console');
+    });
+  }, 300);
+}
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════════════════
+    render();
+  </script>
+</body>
+
+</html>
