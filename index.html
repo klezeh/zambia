@@ -7,6 +7,7 @@
   <title>Crops Farming Cashflow — Dashboard</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
     *,
     *::before,
@@ -221,90 +222,62 @@
   <script>
 
     // ═══════════════════════════════════════════════════════════════════════
-    // DATA LAYER
+    // DATA LAYER — Supabase Cloud
     // ═══════════════════════════════════════════════════════════════════════
-    const DB_KEY = 'farm_v4';
-    function getDB() {
-      // Try v4 first
-      const r = localStorage.getItem(DB_KEY);
-      if (r) return JSON.parse(r);
-      // Migrate from v3
-      const v3 = localStorage.getItem('farm_v3');
-      if (v3) { const d = JSON.parse(v3); d.cashflow.forEach(c => { if (!c.id) c.id = nextId(d.cashflow) }); d.expenses.forEach((e, i) => { if (!e.linkedCfId) e.linkedCfId = null }); saveDB(d); return d }
-      return { cashflow: [], expenses: [] }
+    const SUPABASE_URL='https://emwauwwyghwxqkyxujyl.supabase.co';
+    const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtd2F1d3d5Z2h3eHFreXh1anlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2Mzc2MTEsImV4cCI6MjA5ODIxMzYxMX0._LalYSBreLCpBkVT9S7YeUQrtjk3vko3dFh0aAxuBTk';
+    const supa=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+    let dbCache={cashflow:[],expenses:[]};
+    function getDB(){return dbCache}
+    async function loadFromCloud(){
+      const{data:cf}=await supa.from('cashflow').select('*').order('id');
+      const{data:exp}=await supa.from('expenses').select('*').order('id');
+      dbCache.cashflow=(cf||[]).map(r=>({id:r.id,sn:r.sn,type:r.type,partner:r.partner||'',amountAED:parseFloat(r.amount_aed)||0,transferDate:r.transfer_date||'',exchangeDate:r.exchange_date||'',exchRate:parseFloat(r.exch_rate)||0,zmwEquiv:parseFloat(r.zmw_equiv)||0,notes:r.notes||''}));
+      dbCache.expenses=(exp||[]).map(r=>({id:r.id,date:r.date||'',amount:parseFloat(r.amount)||0,paidTo:r.paid_to||'',purpose:r.purpose||'',category:r.category||'',linkedCfId:r.linked_cf_id||null,linkedCfIds:r.linked_cf_ids||null}));
+      return dbCache;
     }
-    function saveDB(d) { localStorage.setItem(DB_KEY, JSON.stringify(d)) }
-    function nextId(a) { return a.length ? Math.max(...a.map(r => r.id)) + 1 : 1 }
-
-    // Get total expenses linked to a specific cashflow-out record, properly distributing co-links
-    function getLinkedTotal(db, cfId) {
-      const allocations = {};
-      db.expenses.forEach(e => {
-        const cfIds = e.linkedCfIds && e.linkedCfIds.length ? e.linkedCfIds : (e.linkedCfId ? [e.linkedCfId] : []);
-        if (!cfIds.length) return;
-
-        if (cfIds.length === 1) {
-          // Single link: assign full amount
-          allocations[cfIds[0]] = (allocations[cfIds[0]] || 0) + e.amount;
-        } else {
-          // Co-link: split the amount sequentially based on available budget
-          let remExp = e.amount;
-          cfIds.forEach((id, idx) => {
-            if (remExp <= 0) return;
-            const cf = db.cashflow.find(c => c.id === id);
-            if (!cf) return;
-
-            const currentlyUsed = allocations[id] || 0;
-            const available = (cf.zmwEquiv || 0) - currentlyUsed;
-
-            // If it's the last CF link, it absorbs whatever is left (even if it goes over budget)
-            if (idx === cfIds.length - 1) {
-              allocations[id] = currentlyUsed + remExp;
-            } else {
-              // Otherwise, it only takes up to its available limit
-              const toTake = Math.max(available, 0);
-              const applied = Math.min(toTake, remExp);
-              allocations[id] = currentlyUsed + applied;
-              remExp -= applied;
-            }
-          });
+    async function addCashflow(rec){
+      const{data}=await supa.from('cashflow').insert({sn:rec.sn,type:rec.type,partner:rec.partner,amount_aed:rec.amountAED,transfer_date:rec.transferDate,exchange_date:rec.exchangeDate,exch_rate:rec.exchRate,zmw_equiv:rec.zmwEquiv,notes:rec.notes}).select().single();
+      return data?data.id:null;
+    }
+    async function updateCashflowDB(id,rec){
+      await supa.from('cashflow').update({sn:rec.sn,type:rec.type,partner:rec.partner,amount_aed:rec.amountAED,transfer_date:rec.transferDate,exchange_date:rec.exchangeDate,exch_rate:rec.exchRate,zmw_equiv:rec.zmwEquiv,notes:rec.notes}).eq('id',id);
+    }
+    async function addExpense(rec){
+      const{data}=await supa.from('expenses').insert({date:rec.date,amount:rec.amount,paid_to:rec.paidTo,purpose:rec.purpose,category:rec.category||'',linked_cf_id:rec.linkedCfId||null,linked_cf_ids:rec.linkedCfIds||null}).select().single();
+      return data?data.id:null;
+    }
+    async function updateExpenseDB(id,rec){
+      await supa.from('expenses').update({date:rec.date,amount:rec.amount,paid_to:rec.paidTo,purpose:rec.purpose,category:rec.category||'',linked_cf_id:rec.linkedCfId||null,linked_cf_ids:rec.linkedCfIds||null}).eq('id',id);
+    }
+    async function deleteRecord(table,id){await supa.from(table).delete().eq('id',id)}
+    async function migrateToCloud(){
+      const migrated=localStorage.getItem('farm_migrated_supabase');
+      if(migrated)return;
+      const{count}=await supa.from('cashflow').select('*',{count:'exact',head:true});
+      if(count>0){localStorage.setItem('farm_migrated_supabase','1');return}
+      const local=localStorage.getItem('farm_v4')||localStorage.getItem('farm_v3');
+      if(!local){localStorage.setItem('farm_migrated_supabase','1');return}
+      const d=JSON.parse(local);
+      if(d.cashflow&&d.cashflow.length){for(const r of d.cashflow){await supa.from('cashflow').insert({sn:r.sn,type:r.type,partner:r.partner||'',amount_aed:r.amountAED||0,transfer_date:r.transferDate||'',exchange_date:r.exchangeDate||'',exch_rate:r.exchRate||0,zmw_equiv:r.zmwEquiv||0,notes:r.notes||''})}}
+      if(d.expenses&&d.expenses.length){for(const r of d.expenses){await supa.from('expenses').insert({date:r.date||'',amount:r.amount||0,paid_to:r.paidTo||'',purpose:r.purpose||'',category:r.category||'',linked_cf_id:r.linkedCfId||null,linked_cf_ids:r.linkedCfIds||null})}}
+      localStorage.setItem('farm_migrated_supabase','1');
+      toast('✓ Data migrated to cloud!');
+    }
+    function nextId(a){return a.length?Math.max(...a.map(r=>r.id))+1:1}
+    function getLinkedTotal(db,cfId){
+      const allocations={};
+      db.expenses.forEach(e=>{
+        const cfIds=e.linkedCfIds&&e.linkedCfIds.length?e.linkedCfIds:(e.linkedCfId?[e.linkedCfId]:[]);
+        if(!cfIds.length)return;
+        if(cfIds.length===1){allocations[cfIds[0]]=(allocations[cfIds[0]]||0)+e.amount}else{
+          let remExp=e.amount;
+          cfIds.forEach((id,idx)=>{if(remExp<=0)return;const cf=db.cashflow.find(c=>c.id===id);if(!cf)return;const currentlyUsed=allocations[id]||0;const available=(cf.zmwEquiv||0)-currentlyUsed;if(idx===cfIds.length-1){allocations[id]=currentlyUsed+remExp}else{const toTake=Math.max(available,0);const applied=Math.min(toTake,remExp);allocations[id]=currentlyUsed+applied;remExp-=applied}});
         }
       });
-      return allocations[cfId] || 0;
+      return allocations[cfId]||0;
     }
-    // Get remaining budget for a cashflow-out record
-    function getRemaining(db, cfId) {
-      const cf = db.cashflow.find(c => c.id === cfId);
-      if (!cf || cf.type !== 'out') return 0;
-      return (cf.zmwEquiv || 0) - getLinkedTotal(db, cfId);
-    }
-
-    function seedData() {
-      const db = getDB();
-      if (db.cashflow.length === 0 && db.expenses.length === 0) {
-        db.cashflow = [
-          { id: 1, sn: 1, type: 'in', partner: 'David Agbenga', amountAED: 14000, transferDate: '2025-06-02', exchangeDate: '', exchRate: 0, zmwEquiv: 0, notes: 'Initial funding' },
-          { id: 2, sn: 2, type: 'out', partner: '', amountAED: 318.27, transferDate: '', exchangeDate: '2025-06-03', exchRate: 4.72, zmwEquiv: 1501, notes: 'Lawyer mobilization' },
-          { id: 3, sn: 3, type: 'out', partner: '', amountAED: 4261.03, transferDate: '', exchangeDate: '2025-06-08', exchRate: 4.69, zmwEquiv: 20000, notes: 'Tapi - Land lease - part payment' },
-          { id: 4, sn: 4, type: 'out', partner: '', amountAED: 106.52, transferDate: '', exchangeDate: '2025-06-08', exchRate: 4.69, zmwEquiv: 500, notes: 'Saidou - support in measuring the land' },
-          { id: 5, sn: 5, type: 'out', partner: '', amountAED: 2123.87, transferDate: '', exchangeDate: '2025-06-10', exchRate: 4.71, zmwEquiv: 10000.03, notes: 'Steve - mobilize people for clearing' },
-          { id: 6, sn: 6, type: 'out', partner: '', amountAED: 4229.67, transferDate: '', exchangeDate: '2025-06-10', exchRate: 4.73, zmwEquiv: 20000, notes: 'Tapi - Land lease - full payment' },
-          { id: 7, sn: 7, type: 'out', partner: '', amountAED: 525.82, transferDate: '', exchangeDate: '2025-06-08', exchRate: 4.76, zmwEquiv: 2501, notes: 'Lawyer retainers fee - agreement completed' },
-          { id: 8, sn: 8, type: 'out', partner: '', amountAED: 57.33, transferDate: '', exchangeDate: '2025-06-24', exchRate: 4.83, zmwEquiv: 277, notes: 'Saidou - price bulldozer costs' },
-        ];
-        db.expenses = [
-          { id: 1, date: '2025-06-03', amount: 1501, paidTo: 'Arthur', purpose: 'Lawyer mobilization', linkedCfId: 2 },
-          { id: 2, date: '2025-06-08', amount: 20000, paidTo: 'Tapison', purpose: 'Land lease - part payment', linkedCfId: 3 },
-          { id: 3, date: '2025-06-08', amount: 500, paidTo: 'Saidou', purpose: 'Support in measuring the land', linkedCfId: 4 },
-          { id: 4, date: '2025-06-10', amount: 10000.03, paidTo: 'Steve', purpose: 'Mobilize people for clearing', linkedCfId: 5 },
-          { id: 5, date: '2025-06-10', amount: 20000, paidTo: 'Tapison', purpose: 'Land lease - full payment', linkedCfId: 6 },
-          { id: 6, date: '2025-06-08', amount: 2501, paidTo: 'Arthur', purpose: 'Lawyer retainers fee - agreement completed', linkedCfId: 7 },
-          { id: 7, date: '2025-06-24', amount: 277, paidTo: 'Saidou', purpose: 'Price bulldozer costs', linkedCfId: 8 },
-        ];
-        saveDB(db);
-      }
-      return db;
-    }
+    function getRemaining(db,cfId){const cf=db.cashflow.find(c=>c.id===cfId);if(!cf||cf.type!=='out')return 0;return(cf.zmwEquiv||0)-getLinkedTotal(db,cfId)}
 
     // ═══════════════════════════════════════════════════════════════════════
     // ANALYTICS
@@ -343,7 +316,7 @@
     // ═══════════════════════════════════════════════════════════════════════
     // STATE
     // ═══════════════════════════════════════════════════════════════════════
-    let tab = 'dashboard', db = seedData(), filters = { from: '', to: '', person: '', type: 'all' }, budgetExpanded = false;
+    let tab = 'dashboard', db = getDB(), filters = { from: '', to: '', person: '', type: 'all' }, budgetExpanded = false;
     function fmt(n) { return (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
     function fmtI(n) { return (n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }) }
     function render() { db = getDB(); document.getElementById('app').innerHTML = nav() + content(); document.getElementById('modal-root').innerHTML = '' }
@@ -801,102 +774,59 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
     // ═══════════════════════════════════════════════════════════════════════
     // CRUD OPERATIONS
     // ═══════════════════════════════════════════════════════════════════════
-    function saveCFIn() {
-      const db = getDB();
+    async function saveCFIn() {
       const rec = {
-        id: nextId(db.cashflow), sn: db.cashflow.length + 1, type: 'in',
+        sn: dbCache.cashflow.length + 1, type: 'in',
         partner: document.getElementById('cf-partner').value,
         amountAED: parseFloat(document.getElementById('cf-amount-in').value) || 0,
         transferDate: document.getElementById('cf-tdate').value,
         exchangeDate: '', exchRate: 0, zmwEquiv: 0,
         notes: document.getElementById('cf-notes-in').value
       };
-      db.cashflow.push(rec);
-      saveDB(db); toast('✓ Funding record saved'); tab = 'cashflow'; render();
+      await addCashflow(rec);
+      await loadFromCloud(); toast('✓ Funding record saved'); tab = 'cashflow'; render();
     }
 
-    function saveCFOut() {
+    async function saveCFOut() {
       const db = getDB();
-      const a = analytics(db); // Calculate current totals
-
+      const a = analytics(db);
       const amountAED = parseFloat(document.getElementById('cf-amount-out').value) || 0;
-
-      // Validation: Prevent negative balance
-      if (amountAED > a.balance) {
-        alert(`Transaction Blocked: This expense (AED ${fmt(amountAED)}) exceeds your available balance of AED ${fmt(a.balance)}.`);
-        return;
-      }
-
+      if (amountAED > a.balance) { alert(`Transaction Blocked: This expense (AED ${fmt(amountAED)}) exceeds your available balance of AED ${fmt(a.balance)}.`); return; }
       const rate = parseFloat(document.getElementById('cf-rate').value) || 0;
       let zmw = parseFloat(document.getElementById('cf-zmw').value) || 0;
       if (rate > 0 && zmw === 0 && amountAED > 0) zmw = parseFloat((amountAED * rate).toFixed(2));
       const notes = document.getElementById('cf-notes-out').value;
       const paidTo = document.getElementById('cf-paidto').value;
       const eDate = document.getElementById('cf-edate').value;
-
-      const cfId = nextId(db.cashflow);
-      const rec = { id: cfId, sn: db.cashflow.length + 1, type: 'out', partner: '', amountAED, transferDate: '', exchangeDate: eDate, exchRate: rate, zmwEquiv: zmw, notes };
-      db.cashflow.push(rec);
-
-      // Auto-link expense to this cashflow-out
+      const cfId = await addCashflow({sn:db.cashflow.length+1,type:'out',partner:'',amountAED,transferDate:'',exchangeDate:eDate,exchRate:rate,zmwEquiv:zmw,notes});
       if (document.getElementById('cf-also-exp').checked) {
         const catSel=document.getElementById('cf-cat').value;
         const category=catSel==='__custom'?document.getElementById('cf-cat-custom').value:catSel;
-        db.expenses.push({ id: nextId(db.expenses), date: eDate || new Date().toISOString().slice(0, 10), amount: zmw, paidTo: paidTo || 'Unspecified', purpose: notes, linkedCfId: cfId, category:category||'' });
+        await addExpense({date:eDate||new Date().toISOString().slice(0,10),amount:zmw,paidTo:paidTo||'Unspecified',purpose:notes,linkedCfId:cfId,linkedCfIds:null,category:category||''});
       }
-      saveDB(db); toast('✓ Expense record saved & linked'); tab = 'cashflow'; render();
+      await loadFromCloud(); toast('✓ Expense record saved & linked'); tab = 'cashflow'; render();
     }
 
-    function saveExp() {
-      const db = getDB();
+    async function saveExp() {
       const linkVal = document.getElementById('exp-link').value;
       const link2El = document.getElementById('exp-link2');
       const link2Val = link2El ? link2El.value : '';
       const linkedCfId = linkVal ? parseInt(linkVal) : null;
       const linkedCfId2 = (link2Val && document.getElementById('exp-link2-wrap').style.display !== 'none') ? parseInt(link2Val) : null;
       const amount = parseFloat(document.getElementById('exp-amount').value) || 0;
-
-      // Build linked array
       let linkedCfIds = [];
       if (linkedCfId) linkedCfIds.push(linkedCfId);
       if (linkedCfId2 && linkedCfId2 !== linkedCfId) linkedCfIds.push(linkedCfId2);
-
       const catSel=document.getElementById('exp-cat').value;
       const category=catSel==='__custom'?document.getElementById('exp-cat-custom').value:catSel;
-
-      db.expenses.push({
-        id: nextId(db.expenses),
-        date: document.getElementById('exp-date').value,
-        amount: amount,
-        paidTo: document.getElementById('exp-to').value,
-        purpose: document.getElementById('exp-purpose').value,
-        category: category||'',
-        linkedCfId: linkedCfId,
-        linkedCfIds: linkedCfIds.length ? linkedCfIds : null
-      });
-      saveDB(db); toast('✓ Expense saved' + (linkedCfIds.length ? ' & linked to ' + linkedCfIds.length + ' CF-OUT' : '')); tab = 'expenses'; render();
+      await addExpense({date:document.getElementById('exp-date').value,amount,paidTo:document.getElementById('exp-to').value,purpose:document.getElementById('exp-purpose').value,category:category||'',linkedCfId,linkedCfIds:linkedCfIds.length?linkedCfIds:null});
+      await loadFromCloud(); toast('✓ Expense saved'+(linkedCfIds.length?' & linked':'')); tab='expenses'; render();
     }
 
-    function delRec(table, id) {
+    async function delRec(table, id) {
       if (!confirm('Delete this record?')) return;
-      const db = getDB();
-
-      // If deleting a cashflow record, scrub its ID from all expenses
-      if (table === 'cashflow') {
-        db.expenses.forEach(e => {
-          // Remove from primary link
-          if (e.linkedCfId === id) e.linkedCfId = null;
-
-          // Remove from co-linked arrays
-          if (e.linkedCfIds && e.linkedCfIds.includes(id)) {
-            e.linkedCfIds = e.linkedCfIds.filter(x => x !== id);
-            if (e.linkedCfIds.length === 0) e.linkedCfIds = null;
-          }
-        });
-      }
-
-      db[table] = db[table].filter(r => r.id !== id);
-      saveDB(db);
+      await deleteRecord(table, id);
+      await loadFromCloud();
       toast('Deleted');
       render();
     }
@@ -1039,7 +969,7 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       }
     }
 
-    function updateCF(id) {
+    async function updateCF(id) {
       const db = getDB(); const r = db.cashflow.find(x => x.id === id); if (!r) return;
 
       const newType = document.getElementById('e-type').value;
@@ -1064,10 +994,10 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       r.exchangeDate = document.getElementById('e-edate').value; r.exchRate = parseFloat(document.getElementById('e-rate').value) || 0;
       r.zmwEquiv = parseFloat(document.getElementById('e-zmw').value) || 0; r.notes = document.getElementById('e-notes').value;
       if (r.exchRate > 0 && r.zmwEquiv === 0 && r.amountAED > 0) r.zmwEquiv = parseFloat((r.amountAED * r.exchRate).toFixed(2));
-      saveDB(db); toast('✓ Updated'); render()
+      await updateCashflowDB(id, r); await loadFromCloud(); toast('✓ Updated'); render()
     }
 
-    function updateExp(id) {
+    async function updateExp(id) {
       const db = getDB(); const r = db.expenses.find(x => x.id === id); if (!r) return;
       r.date = document.getElementById('ee-date').value;
       r.amount = parseFloat(document.getElementById('ee-amount').value) || 0;
@@ -1075,22 +1005,17 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
       r.purpose = document.getElementById('ee-purpose').value;
       const catSel=document.getElementById('ee-cat').value;
       r.category=catSel==='__custom'?document.getElementById('ee-cat-custom').value:catSel;
-
       const linkVal = document.getElementById('ee-link').value;
       const link2El = document.getElementById('ee-link2');
       const link2Val = link2El ? link2El.value : '';
-
       const linkedCfId = linkVal ? parseInt(linkVal) : null;
       const linkedCfId2 = (link2Val && document.getElementById('ee-link2-wrap').style.display !== 'none') ? parseInt(link2Val) : null;
-
       let linkedCfIds = [];
       if (linkedCfId) linkedCfIds.push(linkedCfId);
       if (linkedCfId2 && linkedCfId2 !== linkedCfId) linkedCfIds.push(linkedCfId2);
-
       r.linkedCfId = linkedCfId;
       r.linkedCfIds = linkedCfIds.length ? linkedCfIds : null;
-
-      saveDB(db); toast('✓ Updated'); render()
+      await updateExpenseDB(id, r); await loadFromCloud(); toast('✓ Updated'); render()
     }
 
     function closeModal(e) { if (e.target.classList.contains('modal-overlay')) closeM() }
@@ -1468,7 +1393,13 @@ ${a.unlinkedExp.length ? `<div style="background:linear-gradient(135deg,#f59e0b2
     // ═══════════════════════════════════════════════════════════════════════
     // INIT
     // ═══════════════════════════════════════════════════════════════════════
-    render();
+    (async function init(){
+      document.getElementById('app').innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:80vh;color:var(--muted);font-size:14px;">Loading from cloud...</div>';
+      await migrateToCloud();
+      await loadFromCloud();
+      db = getDB();
+      render();
+    })();
   </script>
 </body>
 
